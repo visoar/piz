@@ -1,6 +1,7 @@
 use anyhow::Result;
 use colored::*;
 
+use crate::config;
 use crate::context::SystemContext;
 use crate::danger;
 use crate::i18n;
@@ -8,6 +9,38 @@ use crate::llm::prompt::build_chat_system_prompt;
 use crate::llm::{LlmBackend, Message};
 use crate::ui;
 use crate::{handle_command_in_chat, parse_llm_response};
+
+fn chat_history_path() -> Result<std::path::PathBuf> {
+    Ok(config::piz_dir()?.join("chat_history.json"))
+}
+
+fn load_chat_history() -> Vec<Message> {
+    let path = match chat_history_path() {
+        Ok(p) => p,
+        Err(_) => return Vec::new(),
+    };
+    if !path.exists() {
+        return Vec::new();
+    }
+    match std::fs::read_to_string(&path) {
+        Ok(content) => serde_json::from_str(&content).unwrap_or_default(),
+        Err(_) => Vec::new(),
+    }
+}
+
+fn save_chat_history(history: &[Message]) {
+    if let Ok(path) = chat_history_path() {
+        if let Ok(json) = serde_json::to_string_pretty(history) {
+            let _ = std::fs::write(path, json);
+        }
+    }
+}
+
+fn delete_chat_history() {
+    if let Ok(path) = chat_history_path() {
+        let _ = std::fs::remove_file(path);
+    }
+}
 
 pub async fn run_chat(
     backend: &dyn LlmBackend,
@@ -19,7 +52,7 @@ pub async fn run_chat(
     verbose: bool,
 ) -> Result<()> {
     let system_prompt = build_chat_system_prompt(ctx, lang);
-    let mut history: Vec<Message> = Vec::new();
+    let mut history: Vec<Message> = load_chat_history();
 
     println!();
     println!("  {} {}", "piz".green().bold(), tr.chat_title.dimmed());
@@ -51,6 +84,7 @@ pub async fn run_chat(
                 }
                 "/clear" => {
                     history.clear();
+                    delete_chat_history();
                     println!("  {}", tr.chat_cleared);
                     continue;
                 }
@@ -139,6 +173,7 @@ pub async fn run_chat(
             role: "assistant".into(),
             content: response.clone(),
         });
+        save_chat_history(&history);
 
         // Handle command
         handle_command_in_chat(&command, final_danger, auto_confirm, tr);

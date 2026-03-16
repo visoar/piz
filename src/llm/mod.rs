@@ -36,7 +36,7 @@ pub(crate) async fn backoff_delay(attempt: u32) {
 }
 
 /// A message in a conversation
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub role: String, // "user" or "assistant"
     pub content: String,
@@ -190,6 +190,25 @@ mod tests {
             .unwrap()
             .to_string()
             .contains("Claude config not found"));
+    }
+
+    #[test]
+    fn message_serialization_roundtrip() {
+        let msgs = vec![
+            Message {
+                role: "user".into(),
+                content: "hello".into(),
+            },
+            Message {
+                role: "assistant".into(),
+                content: "hi".into(),
+            },
+        ];
+        let json = serde_json::to_string(&msgs).unwrap();
+        let parsed: Vec<Message> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.len(), 2);
+        assert_eq!(parsed[0].role, "user");
+        assert_eq!(parsed[1].content, "hi");
     }
 
     #[test]
