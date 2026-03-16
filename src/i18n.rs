@@ -86,6 +86,13 @@ pub struct T {
     pub chat_hint: &'static str,
     pub bye: &'static str,
 
+    // ── chat commands ──
+    pub chat_help_desc: &'static str,
+    pub chat_clear_desc: &'static str,
+    pub chat_history_desc: &'static str,
+    pub chat_cleared: &'static str,
+    pub chat_unknown_cmd: &'static str,
+
     // ── injection detection ──
     pub inject_env_exfiltration: &'static str,
     pub inject_base64_shell: &'static str,
@@ -161,6 +168,12 @@ static ZH: T = T {
     chat_hint: "输入你的请求，或 'exit'/'quit' 退出。",
     bye: "再见！",
 
+    chat_help_desc: "/help - 显示可用命令  /clear - 清除历史  /history - 查看历史",
+    chat_clear_desc: "清除对话历史",
+    chat_history_desc: "查看对话历史",
+    chat_cleared: "对话历史已清除。",
+    chat_unknown_cmd: "未知命令。输入 /help 查看可用命令。",
+
     inject_env_exfiltration: "可疑：命令可能泄露敏感环境变量",
     inject_base64_shell: "可疑：Base64 编码内容被管道传送到 Shell",
     inject_reverse_shell: "可疑：可能的反向 Shell 攻击",
@@ -227,6 +240,12 @@ static EN: T = T {
     chat_hint: "Type your request, or 'exit'/'quit' to leave.",
     bye: "Bye!",
 
+    chat_help_desc: "/help - Show commands  /clear - Clear history  /history - View history",
+    chat_clear_desc: "Clear chat history",
+    chat_history_desc: "View chat history",
+    chat_cleared: "Chat history cleared.",
+    chat_unknown_cmd: "Unknown command. Type /help for available commands.",
+
     inject_env_exfiltration: "Suspicious: command may exfiltrate sensitive environment variables",
     inject_base64_shell: "Suspicious: base64-encoded payload piped to shell",
     inject_reverse_shell: "Suspicious: possible reverse shell attempt",
@@ -292,6 +311,12 @@ static JA: T = T {
     chat_title: "インタラクティブモード",
     chat_hint: "リクエストを入力するか、'exit'/'quit' で終了します。",
     bye: "さようなら！",
+
+    chat_help_desc: "/help - コマンド一覧  /clear - 履歴クリア  /history - 履歴表示",
+    chat_clear_desc: "チャット履歴をクリア",
+    chat_history_desc: "チャット履歴を表示",
+    chat_cleared: "チャット履歴をクリアしました。",
+    chat_unknown_cmd: "不明なコマンドです。/help で利用可能なコマンドを確認してください。",
 
     inject_env_exfiltration: "疑わしい：機密環境変数が漏洩する可能性があります",
     inject_base64_shell: "疑わしい：Base64エンコードされたペイロードがシェルにパイプされています",
@@ -431,6 +456,11 @@ mod tests {
             assert!(!tr.chat_title.is_empty(), "{:?}: chat_title", lang);
             assert!(!tr.chat_hint.is_empty(), "{:?}: chat_hint", lang);
             assert!(!tr.bye.is_empty(), "{:?}: bye", lang);
+            assert!(!tr.chat_help_desc.is_empty(), "{:?}: chat_help_desc", lang);
+            assert!(!tr.chat_clear_desc.is_empty(), "{:?}: chat_clear_desc", lang);
+            assert!(!tr.chat_history_desc.is_empty(), "{:?}: chat_history_desc", lang);
+            assert!(!tr.chat_cleared.is_empty(), "{:?}: chat_cleared", lang);
+            assert!(!tr.chat_unknown_cmd.is_empty(), "{:?}: chat_unknown_cmd", lang);
             assert!(!tr.inject_env_exfiltration.is_empty(), "{:?}: inject_env_exfiltration", lang);
             assert!(!tr.inject_base64_shell.is_empty(), "{:?}: inject_base64_shell", lang);
             assert!(!tr.inject_reverse_shell.is_empty(), "{:?}: inject_reverse_shell", lang);

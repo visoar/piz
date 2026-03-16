@@ -42,6 +42,36 @@ pub async fn run_chat(
             break;
         }
 
+        // Handle slash commands
+        if trimmed.starts_with('/') {
+            match trimmed.to_lowercase().as_str() {
+                "/help" => {
+                    println!("  {}", tr.chat_help_desc);
+                    continue;
+                }
+                "/clear" => {
+                    history.clear();
+                    println!("  {}", tr.chat_cleared);
+                    continue;
+                }
+                "/history" => {
+                    if history.is_empty() {
+                        println!("  (empty)");
+                    } else {
+                        for m in &history {
+                            let preview: String = m.content.chars().take(80).collect();
+                            println!("  [{}] {}", m.role, preview);
+                        }
+                    }
+                    continue;
+                }
+                _ => {
+                    println!("  {}", tr.chat_unknown_cmd);
+                    continue;
+                }
+            }
+        }
+
         // Add user message to history
         history.push(Message {
             role: "user".into(),
