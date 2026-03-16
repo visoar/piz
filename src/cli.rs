@@ -1,4 +1,4 @@
-use clap::{Parser, Subcommand};
+use clap::{CommandFactory, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -50,4 +50,20 @@ pub enum Commands {
     },
     /// Clear the command cache
     ClearCache,
+    /// Generate shell completions
+    Completions {
+        /// Shell type (bash, zsh, fish, powershell)
+        shell: clap_complete::Shell,
+    },
+}
+
+impl Cli {
+    pub fn generate_completions(shell: clap_complete::Shell) {
+        clap_complete::generate(
+            shell,
+            &mut Self::command(),
+            "piz",
+            &mut std::io::stdout(),
+        );
+    }
 }

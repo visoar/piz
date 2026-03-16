@@ -35,6 +35,12 @@ async fn run() -> Result<()> {
 
     let cli = Cli::parse();
 
+    // Handle completions before loading config (no config needed)
+    if let Some(Commands::Completions { shell }) = &cli.command {
+        Cli::generate_completions(*shell);
+        return Ok(());
+    }
+
     // Handle config subcommand before loading config
     if let Some(Commands::Config { init, show, reset }) = &cli.command {
         if *init {
@@ -111,6 +117,7 @@ async fn run() -> Result<()> {
                 .await;
             }
             Commands::Config { .. } => unreachable!("Config handled earlier"),
+            Commands::Completions { .. } => unreachable!("Completions handled earlier"),
         }
     }
 
