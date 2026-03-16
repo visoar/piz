@@ -55,6 +55,11 @@ pub struct T {
     pub last_succeeded: &'static str,
     pub failed_command: &'static str,
 
+    // ── auto-fix ──
+    pub auto_fix_prompt: &'static str,
+    pub auto_fix_attempting: &'static str,
+    pub auto_fix_failed: &'static str,
+
     // ── config init ──
     pub wizard_title: &'static str,
     pub select_backend: &'static str,
@@ -111,6 +116,10 @@ static ZH: T = T {
     last_succeeded: "上次命令执行成功，无需修复。",
     failed_command: "失败命令：",
 
+    auto_fix_prompt: "命令执行失败，是否自动修复？",
+    auto_fix_attempting: "正在分析错误并尝试修复...",
+    auto_fix_failed: "自动修复失败，原因：",
+
     wizard_title: "⚙ piz 配置向导",
     select_backend: "选择默认 LLM 后端",
 
@@ -159,6 +168,10 @@ static EN: T = T {
     last_succeeded: "Last command succeeded. Nothing to fix.",
     failed_command: "Failed command:",
 
+    auto_fix_prompt: "Command failed. Auto-fix?",
+    auto_fix_attempting: "Analyzing error and attempting fix...",
+    auto_fix_failed: "Auto-fix failed, reason:",
+
     wizard_title: "⚙ piz configuration wizard",
     select_backend: "Select default LLM backend",
 
@@ -206,6 +219,10 @@ static JA: T = T {
     last_from_history: "履歴のコマンド：",
     last_succeeded: "前回のコマンドは成功しました。修正の必要はありません。",
     failed_command: "失敗したコマンド：",
+
+    auto_fix_prompt: "コマンドが失敗しました。自動修復しますか？",
+    auto_fix_attempting: "エラーを分析して修復を試みています...",
+    auto_fix_failed: "自動修復に失敗しました。理由：",
 
     wizard_title: "⚙ piz 設定ウィザード",
     select_backend: "デフォルトの LLM バックエンドを選択",

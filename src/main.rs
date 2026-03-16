@@ -98,6 +98,9 @@ async fn run() -> Result<()> {
 
     let ctx = context::collect_context();
 
+    // Create backend early (needed for both cache hits and LLM calls, for auto-fix)
+    let backend = llm::create_backend(&cfg, cli.backend.as_deref())?;
+
     // Check cache
     if !cli.no_cache {
         let c = cache::Cache::open(cfg.cache_ttl_hours)?;
@@ -107,12 +110,20 @@ async fn run() -> Result<()> {
             let llm_danger = DangerLevel::from_str_level(&cached_danger);
             let final_danger = regex_danger.max(llm_danger);
 
-            return handle_command(&cached_cmd, final_danger, cfg.auto_confirm_safe, tr);
+            return handle_command_with_autofix(
+                &cached_cmd,
+                final_danger,
+                cfg.auto_confirm_safe,
+                tr,
+                backend.as_ref(),
+                &ctx,
+                lang.code(),
+            )
+            .await;
         }
     }
 
     // Call LLM (with implicit context from last execution)
-    let backend = llm::create_backend(&cfg, cli.backend.as_deref())?;
     let prev_context = executor::load_last_exec()
         .ok()
         .map(|last| llm::prompt::PrevContext {
@@ -156,27 +167,150 @@ async fn run() -> Result<()> {
         let _ = c.put(&query, &ctx.os, &ctx.shell, &command, danger_str);
     }
 
-    handle_command(&command, final_danger, cfg.auto_confirm_safe, tr)
+    handle_command_with_autofix(
+        &command,
+        final_danger,
+        cfg.auto_confirm_safe,
+        tr,
+        backend.as_ref(),
+        &ctx,
+        lang.code(),
+    )
+    .await
 }
 
-fn handle_command(
+async fn handle_command_with_autofix(
     command: &str,
     danger: DangerLevel,
     auto_confirm: bool,
     tr: &i18n::T,
+    backend: &dyn llm::LlmBackend,
+    ctx: &context::SystemContext,
+    lang: &str,
 ) -> Result<()> {
     let choice = executor::prompt_user(command, danger, auto_confirm, tr)?;
-    match choice {
-        UserChoice::Execute => {
-            executor::execute_command(command, tr)?;
-        }
-        UserChoice::Edit(edited) => {
-            executor::execute_command(&edited, tr)?;
-        }
+    let exec_result = match choice {
+        UserChoice::Execute => Some(executor::execute_command(command, tr)?),
+        UserChoice::Edit(ref edited) => Some(executor::execute_command(edited, tr)?),
         UserChoice::Cancel => {
             ui::print_info(tr.cancelled);
+            return Ok(());
+        }
+    };
+
+    // Auto-fix if command failed
+    if let Some((exit_code, _stdout, stderr)) = exec_result {
+        if exit_code != 0 {
+            let executed_cmd = match &choice {
+                UserChoice::Edit(edited) => edited.as_str(),
+                _ => command,
+            };
+            try_auto_fix(executed_cmd, exit_code, &stderr, tr, backend, ctx, lang).await?;
         }
     }
+
+    Ok(())
+}
+
+/// Maximum auto-fix retry attempts
+const MAX_AUTO_FIX_RETRIES: usize = 3;
+
+async fn try_auto_fix(
+    failed_cmd: &str,
+    exit_code: i32,
+    stderr: &str,
+    tr: &i18n::T,
+    backend: &dyn llm::LlmBackend,
+    ctx: &context::SystemContext,
+    lang: &str,
+) -> Result<()> {
+    println!();
+    let do_fix = dialoguer::Confirm::new()
+        .with_prompt(tr.auto_fix_prompt)
+        .default(true)
+        .interact()?;
+
+    if !do_fix {
+        return Ok(());
+    }
+
+    let mut current_cmd = failed_cmd.to_string();
+    let mut current_stderr = stderr.to_string();
+    let mut current_exit_code = exit_code;
+
+    for attempt in 1..=MAX_AUTO_FIX_RETRIES {
+        let spinner = ui::create_spinner(tr.auto_fix_attempting);
+        let (system, user) = llm::prompt::build_fix_prompt(
+            ctx,
+            &current_cmd,
+            current_exit_code,
+            &current_stderr,
+            lang,
+        );
+        let response = backend.chat(&system, &user).await?;
+        spinner.finish_and_clear();
+
+        let (diagnosis, fixed_cmd, llm_danger) = match fix::parse_fix_response(&response) {
+            Ok(r) => r,
+            Err(e) => {
+                ui::print_error(&format!("{} {}", tr.auto_fix_failed, e));
+                return Ok(());
+            }
+        };
+
+        ui::print_diagnosis(tr, &diagnosis);
+        println!();
+
+        // Injection check on fix
+        if let Some(reason) = danger::detect_injection(&fixed_cmd) {
+            ui::print_error(&format!("{} {}", tr.auto_fix_failed, reason));
+            return Ok(());
+        }
+
+        let regex_danger = danger::detect_danger_regex(&fixed_cmd);
+        let final_danger = regex_danger.max(llm_danger);
+
+        let choice = executor::prompt_user(&fixed_cmd, final_danger, false, tr)?;
+        match choice {
+            UserChoice::Execute => {
+                let (code, _out, err) = executor::execute_command(&fixed_cmd, tr)?;
+                if code == 0 {
+                    return Ok(());
+                }
+                // Still failing — loop for next attempt
+                current_cmd = fixed_cmd;
+                current_stderr = err;
+                current_exit_code = code;
+
+                if attempt < MAX_AUTO_FIX_RETRIES {
+                    println!();
+                    ui::print_info(&format!(
+                        "{} ({}/{})",
+                        tr.auto_fix_attempting,
+                        attempt + 1,
+                        MAX_AUTO_FIX_RETRIES
+                    ));
+                }
+            }
+            UserChoice::Edit(edited) => {
+                let (code, _out, err) = executor::execute_command(&edited, tr)?;
+                if code == 0 {
+                    return Ok(());
+                }
+                current_cmd = edited;
+                current_stderr = err;
+                current_exit_code = code;
+            }
+            UserChoice::Cancel => {
+                return Ok(());
+            }
+        }
+    }
+
+    ui::print_error(&format!(
+        "{} reached max retries ({})",
+        tr.auto_fix_failed, MAX_AUTO_FIX_RETRIES
+    ));
     Ok(())
 }
 
