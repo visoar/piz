@@ -114,6 +114,14 @@ async fn run() -> Result<()> {
     // Check cache
     if let Some(ref c) = cache {
         if let Some((cached_cmd, cached_danger)) = c.get(&query, &ctx.os, &ctx.shell)? {
+            // Re-validate injection detection on cached commands
+            if let Some(reason) = danger::detect_injection(&cached_cmd) {
+                ui::print_danger(tr);
+                ui::print_info(reason);
+                let _ = c.delete(&query, &ctx.os, &ctx.shell);
+                anyhow::bail!("Cached command blocked: {}", reason);
+            }
+
             ui::print_cached(tr);
             let regex_danger = danger::detect_danger_regex(&cached_cmd);
             let llm_danger = DangerLevel::from_str_level(&cached_danger);

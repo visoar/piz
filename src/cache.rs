@@ -257,6 +257,17 @@ mod tests {
     }
 
     #[test]
+    fn delete_removes_entry() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        cache
+            .put("list files", "Linux", "bash", "ls -la", "safe")
+            .unwrap();
+        assert!(cache.get("list files", "Linux", "bash").unwrap().is_some());
+        cache.delete("list files", "Linux", "bash").unwrap();
+        assert!(cache.get("list files", "Linux", "bash").unwrap().is_none());
+    }
+
+    #[test]
     fn count_returns_correct() {
         let cache = Cache::open_in_memory(168).unwrap();
         assert_eq!(cache.count().unwrap(), 0);
