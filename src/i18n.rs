@@ -93,6 +93,9 @@ pub struct T {
     pub chat_cleared: &'static str,
     pub chat_unknown_cmd: &'static str,
 
+    // ── multi-candidate ──
+    pub select_command: &'static str,
+
     // ── injection detection ──
     pub inject_env_exfiltration: &'static str,
     pub inject_base64_shell: &'static str,
@@ -174,6 +177,8 @@ static ZH: T = T {
     chat_cleared: "对话历史已清除。",
     chat_unknown_cmd: "未知命令。输入 /help 查看可用命令。",
 
+    select_command: "选择要执行的命令",
+
     inject_env_exfiltration: "可疑：命令可能泄露敏感环境变量",
     inject_base64_shell: "可疑：Base64 编码内容被管道传送到 Shell",
     inject_reverse_shell: "可疑：可能的反向 Shell 攻击",
@@ -246,6 +251,8 @@ static EN: T = T {
     chat_cleared: "Chat history cleared.",
     chat_unknown_cmd: "Unknown command. Type /help for available commands.",
 
+    select_command: "Select a command to execute",
+
     inject_env_exfiltration: "Suspicious: command may exfiltrate sensitive environment variables",
     inject_base64_shell: "Suspicious: base64-encoded payload piped to shell",
     inject_reverse_shell: "Suspicious: possible reverse shell attempt",
@@ -317,6 +324,8 @@ static JA: T = T {
     chat_history_desc: "チャット履歴を表示",
     chat_cleared: "チャット履歴をクリアしました。",
     chat_unknown_cmd: "不明なコマンドです。/help で利用可能なコマンドを確認してください。",
+
+    select_command: "実行するコマンドを選択",
 
     inject_env_exfiltration: "疑わしい：機密環境変数が漏洩する可能性があります",
     inject_base64_shell: "疑わしい：Base64エンコードされたペイロードがシェルにパイプされています",
@@ -461,6 +470,7 @@ mod tests {
             assert!(!tr.chat_history_desc.is_empty(), "{:?}: chat_history_desc", lang);
             assert!(!tr.chat_cleared.is_empty(), "{:?}: chat_cleared", lang);
             assert!(!tr.chat_unknown_cmd.is_empty(), "{:?}: chat_unknown_cmd", lang);
+            assert!(!tr.select_command.is_empty(), "{:?}: select_command", lang);
             assert!(!tr.inject_env_exfiltration.is_empty(), "{:?}: inject_env_exfiltration", lang);
             assert!(!tr.inject_base64_shell.is_empty(), "{:?}: inject_base64_shell", lang);
             assert!(!tr.inject_reverse_shell.is_empty(), "{:?}: inject_reverse_shell", lang);

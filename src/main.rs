@@ -219,12 +219,25 @@ async fn run() -> Result<()> {
             exit_code: last.exit_code,
             stdout_preview: last.stdout.lines().take(3).collect::<Vec<_>>().join("\n"),
         });
-    let (system_prompt, user_prompt) = llm::prompt::build_translate_prompt_with_context(
-        &ctx,
-        &query,
-        lang.code(),
-        prev_context.as_ref(),
-    );
+
+    let candidates = cli.candidates.clamp(1, 5);
+
+    let (system_prompt, user_prompt) = if candidates > 1 {
+        llm::prompt::build_multi_candidate_prompt(
+            &ctx,
+            &query,
+            lang.code(),
+            candidates,
+            prev_context.as_ref(),
+        )
+    } else {
+        llm::prompt::build_translate_prompt_with_context(
+            &ctx,
+            &query,
+            lang.code(),
+            prev_context.as_ref(),
+        )
+    };
 
     if cli.verbose {
         eprintln!("[verbose] system prompt length: {} chars", system_prompt.len());
@@ -244,8 +257,12 @@ async fn run() -> Result<()> {
         eprintln!("[verbose] response: {}", response);
     }
 
-    // Parse response (4-level fallback)
-    let (command, llm_danger) = parse_llm_response(&response)?;
+    // Multi-candidate selection or single-command parsing
+    let (command, llm_danger) = if candidates > 1 {
+        select_from_candidates(&response, tr)?
+    } else {
+        parse_llm_response(&response)?
+    };
 
     // Injection detection
     if let Some(reason) = danger::detect_injection(&command) {
@@ -339,6 +356,123 @@ async fn handle_command_with_autofix(
     Ok(())
 }
 
+
+/// A candidate command from multi-candidate response
+struct Candidate {
+    command: String,
+    danger: DangerLevel,
+    explanation: String,
+}
+
+/// Parse multi-candidate JSON array response, with fallback to single object
+fn parse_multi_candidate_response(response: &str) -> Result<Vec<Candidate>> {
+    let trimmed = response.trim();
+
+    // Try parsing as JSON array
+    if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(trimmed) {
+        let candidates = extract_candidates_from_array(&arr);
+        if !candidates.is_empty() {
+            return Ok(candidates);
+        }
+    }
+
+    // Try extracting JSON array from text
+    if let Some(arr_str) = extract_json_array(trimmed) {
+        if let Ok(arr) = serde_json::from_str::<Vec<serde_json::Value>>(arr_str) {
+            let candidates = extract_candidates_from_array(&arr);
+            if !candidates.is_empty() {
+                return Ok(candidates);
+            }
+        }
+    }
+
+    // Fallback: try parsing as single object and wrap
+    let (cmd, danger) = parse_llm_response(response)?;
+    Ok(vec![Candidate {
+        command: cmd,
+        danger,
+        explanation: String::new(),
+    }])
+}
+
+fn extract_candidates_from_array(arr: &[serde_json::Value]) -> Vec<Candidate> {
+    arr.iter()
+        .filter_map(|v| {
+            let cmd = v["command"].as_str()?.to_string();
+            if cmd.is_empty() {
+                return None;
+            }
+            let danger = v["danger"]
+                .as_str()
+                .map(DangerLevel::from_str_level)
+                .unwrap_or(DangerLevel::Safe);
+            let explanation = v["explanation"].as_str().unwrap_or("").to_string();
+            Some(Candidate {
+                command: cmd,
+                danger,
+                explanation,
+            })
+        })
+        .collect()
+}
+
+/// Extract a JSON array from text by matching brackets
+fn extract_json_array(text: &str) -> Option<&str> {
+    let start = text.find('[')?;
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, ch) in text[start..].char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => escape = true,
+            '"' => in_string = !in_string,
+            '[' if !in_string => depth += 1,
+            ']' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[start..start + i + 1]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Present candidates to user via dialoguer::Select and return chosen command
+fn select_from_candidates(response: &str, tr: &i18n::T) -> Result<(String, DangerLevel)> {
+    let candidates = parse_multi_candidate_response(response)?;
+
+    if candidates.len() == 1 {
+        return Ok((candidates[0].command.clone(), candidates[0].danger));
+    }
+
+    let items: Vec<String> = candidates
+        .iter()
+        .enumerate()
+        .map(|(i, c)| {
+            if c.explanation.is_empty() {
+                format!("{}. {}", i + 1, c.command)
+            } else {
+                format!("{}. {} — {}", i + 1, c.command, c.explanation)
+            }
+        })
+        .collect();
+
+    println!();
+    let selection = dialoguer::Select::new()
+        .with_prompt(tr.select_command)
+        .items(&items)
+        .default(0)
+        .interact()?;
+
+    let chosen = &candidates[selection];
+    Ok((chosen.command.clone(), chosen.danger))
+}
 
 /// Handle command in chat mode (non-fatal, continues the loop)
 pub fn handle_command_in_chat(
@@ -667,5 +801,53 @@ mod tests {
         let input = r#"{"command": "ls -la", "danger": "safe", "refuse": false}"#;
         let result = parse_llm_response(input);
         assert!(result.is_ok());
+    }
+
+    // ── Multi-candidate parsing ──
+
+    #[test]
+    fn parse_multi_candidate_json_array() {
+        let input = r#"[{"command": "ls -la", "danger": "safe", "explanation": "List all files"},{"command": "find . -maxdepth 1", "danger": "safe", "explanation": "Find files in current dir"}]"#;
+        let candidates = parse_multi_candidate_response(input).unwrap();
+        assert_eq!(candidates.len(), 2);
+        assert_eq!(candidates[0].command, "ls -la");
+        assert_eq!(candidates[0].explanation, "List all files");
+        assert_eq!(candidates[1].command, "find . -maxdepth 1");
+    }
+
+    #[test]
+    fn parse_multi_candidate_fallback_to_single() {
+        let input = r#"{"command": "ls -la", "danger": "safe"}"#;
+        let candidates = parse_multi_candidate_response(input).unwrap();
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].command, "ls -la");
+    }
+
+    #[test]
+    fn parse_multi_candidate_embedded_array() {
+        let input = r#"Here are 3 options: [{"command":"ls","danger":"safe","explanation":"simple"},{"command":"dir","danger":"safe","explanation":"windows"}] Pick one."#;
+        let candidates = parse_multi_candidate_response(input).unwrap();
+        assert_eq!(candidates.len(), 2);
+    }
+
+    #[test]
+    fn parse_multi_candidate_skips_empty_commands() {
+        let input = r#"[{"command": "ls", "danger": "safe"}, {"command": "", "danger": "safe"}]"#;
+        let candidates = parse_multi_candidate_response(input).unwrap();
+        assert_eq!(candidates.len(), 1);
+    }
+
+    #[test]
+    fn extract_json_array_basic() {
+        let input = r#"text [{"a":1}] more"#;
+        let arr = extract_json_array(input).unwrap();
+        assert_eq!(arr, r#"[{"a":1}]"#);
+    }
+
+    #[test]
+    fn extract_json_array_nested() {
+        let input = r#"[{"a":[1,2]},{"b":3}]"#;
+        let arr = extract_json_array(input).unwrap();
+        assert_eq!(arr, input);
     }
 }

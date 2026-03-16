@@ -30,6 +30,10 @@ pub struct Cli {
     #[arg(long)]
     pub pipe: bool,
 
+    /// Number of candidate commands to generate (1-5)
+    #[arg(short = 'n', long, default_value = "1")]
+    pub candidates: u8,
+
     #[command(subcommand)]
     pub command: Option<Commands>,
 }
