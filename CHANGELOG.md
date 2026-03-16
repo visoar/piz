@@ -8,6 +8,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 
 ---
 
+## [0.2.2] - 2026-03-17
+
+### Added / 新增
+- Self-update feature: `piz update` checks GitHub Releases, downloads and upgrades in-place with rollback on failure
+- 自更新功能：`piz update` 检查 GitHub Releases，就地下载升级，失败自动回滚
+- Background update check on each run (at most once per 24h), shows hint when new version available
+- 每次运行后台检查更新（每 24 小时最多一次），有新版本时提示用户
+- Two upgrade options: overwrite install or uninstall-then-reinstall, user chooses interactively
+- 两种升级方式：覆盖安装或卸载后重装，用户交互式选择
+
+### Fixed / 修复
+- PowerShell: `Set-Location D:` goes to last visited path, not drive root; now generates `cd D:\` instead
+- PowerShell：`Set-Location D:` 会跳转到上次访问路径而非盘符根目录，现在改为生成 `cd D:\`
+- cmd.exe: added `cd /d` hint for cross-drive navigation
+- cmd.exe：添加 `cd /d` 提示用于跨盘符切换
+
+### Removed / 移除
+- Japanese (ja) language support removed, now supports Chinese (zh) and English (en) only
+- 移除日文（ja）语言支持，现仅支持中文（zh）和英文（en）
+
 ## [0.2.1] - 2026-03-17
 
 ### Fixed / 修复
