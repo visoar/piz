@@ -42,7 +42,7 @@ $ piz 查看磁盘使用情况
 - **执行历史** — `piz history` 查看和搜索所有执行过的命令
 - **Shell 补全** — 支持 bash、zsh、fish、PowerShell 自动补全
 - **管道模式** — `--pipe` 纯命令输出，便于脚本集成
-- **多语言界面** — 中文、英文、日文，安全提示信息全面国际化
+- **多语言界面** — 中文、英文，安全提示信息全面国际化
 - **跨平台** — Windows (PowerShell/cmd)、macOS、Linux (bash/zsh/fish)
 - **交互式配置** — 首次运行自动引导，内置供应商预设，无需手动编辑配置
 - **NO_COLOR 支持** — 尊重 `NO_COLOR` 环境变量
@@ -91,7 +91,7 @@ $ piz 列出文件
 
   ⚙ piz 配置向导
 
-? 选择语言 / Select language / 言語を選択：中文
+? 选择语言 / Select language：中文
 ? 选择默认 LLM 后端：
   > openai (DeepSeek, SiliconFlow, OpenRouter, ...)
     claude
@@ -267,7 +267,7 @@ default_backend = "openai"
 cache_ttl_hours = 168          # 缓存有效期（7天）
 cache_max_entries = 1000       # 最大缓存条目数（LRU 淘汰）
 auto_confirm_safe = true       # 安全命令自动执行
-language = "zh"                # 界面语言：zh / en / ja
+language = "zh"                # 界面语言：zh / en
 chat_history_size = 20         # 对话历史最大消息数
 
 [openai]
@@ -373,7 +373,7 @@ piz 实现了三层安全防护：
 - 下载-执行链（`wget ... && chmod +x && ./`）
 - 危险的 find/xargs 模式（`find -delete`、`xargs rm`）
 
-命中以上模式的命令会被**直接拦截**，无法执行。注入提示信息已全面国际化（中/英/日）。
+命中以上模式的命令会被**直接拦截**，无法执行。注入提示信息已全面国际化（中/英）。
 
 缓存命中时也会重新验证注入检测 —— 中毒的缓存条目会被自动清除。
 
@@ -394,7 +394,7 @@ piz/
 │   ├── cli.rs           # clap 命令行参数定义（含 clap_complete）
 │   ├── config.rs        # TOML 配置 + 交互式配置向导（12 个供应商预设）
 │   ├── context.rs       # 系统上下文收集（OS、Shell、CWD、架构、Git、包管理器）
-│   ├── i18n.rs          # 多语言翻译（中/英/日），含注入检测消息国际化
+│   ├── i18n.rs          # 多语言翻译（中/英），含注入检测消息国际化
 │   ├── llm/
 │   │   ├── mod.rs       # LlmBackend trait + 工厂函数 + 重试/退避工具
 │   │   ├── prompt.rs    # Prompt 模板（含安全规则、few-shot 示例、多候选支持）
@@ -424,7 +424,7 @@ git clone https://github.com/AriesOxO/piz.git
 cd piz
 
 cargo build --release      # 构建
-cargo test                 # 运行测试（158 个）
+cargo test                 # 运行测试（157 个）
 cargo install --path .     # 安装到 PATH
 ```
 

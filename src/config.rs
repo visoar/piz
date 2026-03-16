@@ -119,15 +119,14 @@ pub fn init_config() -> Result<()> {
     let path = config_path()?;
 
     // Step 0: choose language first (always show trilingual)
-    let lang_items = &["中文", "English", "日本語"];
+    let lang_items = &["中文", "English"];
     let lang_idx = dialoguer::Select::new()
-        .with_prompt("选择语言 / Select language / 言語を選択")
+        .with_prompt("选择语言 / Select language")
         .items(lang_items)
         .default(0)
         .interact()?;
     let lang = match lang_idx {
         1 => Lang::En,
-        2 => Lang::Ja,
         _ => Lang::Zh,
     };
     let tr = i18n::t(lang);

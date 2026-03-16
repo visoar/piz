@@ -42,7 +42,7 @@ $ piz list all files larger than 100MB
 - **Execution History** - Track all executed commands with `piz history`, searchable
 - **Shell Completions** - Generate completions for bash, zsh, fish, and PowerShell
 - **Pipe Mode** - Script-friendly output with `--pipe` for integration with other tools
-- **Multi-Language UI** - Chinese, English, Japanese interface with localized security messages
+- **Multi-Language UI** - Chinese, English interface with localized security messages
 - **Cross-Platform** - Windows (PowerShell/cmd), macOS, Linux (bash/zsh/fish)
 - **Interactive Setup** - First-run wizard with provider presets, no manual config editing needed
 - **NO_COLOR Support** - Respects the `NO_COLOR` environment variable
@@ -92,7 +92,7 @@ No configuration found. Let's set up piz for the first time.
 
   ⚙ piz configuration wizard
 
-? Select language: 中文 / English / 日本語
+? Select language: 中文 / English
 ? Select default LLM backend:
   > openai (DeepSeek, SiliconFlow, OpenRouter, ...)
     claude
@@ -265,7 +265,7 @@ default_backend = "openai"
 cache_ttl_hours = 168          # Cache TTL (7 days)
 cache_max_entries = 1000       # Maximum cache entries (LRU eviction)
 auto_confirm_safe = true       # Auto-execute safe commands
-language = "zh"                # UI language: zh / en / ja
+language = "zh"                # UI language: zh / en
 chat_history_size = 20         # Max chat history messages
 
 [openai]
@@ -371,7 +371,7 @@ Commands are scanned for malicious patterns before execution:
 - Download-execute chains (`wget ... && chmod +x && ./`)
 - Dangerous find/xargs patterns (`find -delete`, `xargs rm`)
 
-Matched commands are **blocked** and cannot be executed. Injection messages are localized (zh/en/ja).
+Matched commands are **blocked** and cannot be executed. Injection messages are localized (zh/en).
 
 Cached commands are also re-validated on retrieval — poisoned cache entries are automatically purged.
 
@@ -392,7 +392,7 @@ piz/
 │   ├── cli.rs           # clap argument definitions (with clap_complete)
 │   ├── config.rs        # TOML config + interactive setup wizard (12 provider presets)
 │   ├── context.rs       # System context collection (OS, shell, cwd, arch, git, package manager)
-│   ├── i18n.rs          # Multi-language translations (zh/en/ja) including injection messages
+│   ├── i18n.rs          # Multi-language translations (zh/en) including injection messages
 │   ├── llm/
 │   │   ├── mod.rs       # LlmBackend trait + factory + retry/backoff utilities
 │   │   ├── prompt.rs    # Prompt templates with security rules, few-shot examples, multi-candidate
@@ -422,7 +422,7 @@ git clone https://github.com/AriesOxO/piz.git
 cd piz
 
 cargo build --release      # Build
-cargo test                 # Run tests (158)
+cargo test                 # Run tests (157)
 cargo install --path .     # Install to PATH
 ```
 

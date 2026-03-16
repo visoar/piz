@@ -41,7 +41,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - 对缓存命令进行注入检测，自动清除被污染的条目
 - New injection patterns: `curl -K` config file attack, `xargs rm`, `find -delete`, `find -exec rm`
 - 新增注入检测模式：`curl -K` 配置文件攻击、`xargs rm`、`find -delete`、`find -exec rm`
-- Injection detection messages internationalized (zh/en/ja) via `InjectionReason` enum
+- Injection detection messages internationalized (zh/en) via `InjectionReason` enum
 - 注入检测消息国际化（中/英/日），通过 `InjectionReason` 枚举实现
 - API retry with exponential backoff for 429/5xx errors (all backends)
 - API 请求重试与指数退避，适用于 429/5xx 错误（所有后端）
@@ -59,8 +59,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - `piz fix` 子命令自动修复重试循环（最多 3 次）
 - Configurable `chat_history_size` in config
 - 可配置 `chat_history_size` 聊天历史条数
-- 158 tests (150 unit + 8 integration)
-- 158 个测试（150 单元测试 + 8 集成测试）
+- 157 tests (149 unit + 8 integration)
+- 157 个测试（149 单元测试 + 8 集成测试）
 
 ### Changed / 变更
 - Cache is now opened once per request instead of 3 times (performance improvement)
@@ -107,8 +107,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/), and this
 - TOML 配置文件（`~/.piz/config.toml`）
 - Interactive configuration wizard with provider presets (OpenAI, DeepSeek, SiliconFlow, Moonshot, etc.)
 - 交互式配置向导，内置供应商预设（OpenAI、DeepSeek、SiliconFlow、Moonshot 等）
-- Multi-language UI support: Chinese (zh), English (en), Japanese (ja)
-- 多语言 UI 支持：中文（zh）、英文（en）、日文（ja）
+- Multi-language UI support: Chinese (zh), English (en)
+- 多语言 UI 支持：中文（zh）、英文（en）
 - System context injection (OS, shell, cwd) into prompts
 - 系统上下文注入提示词（操作系统、Shell、当前目录）
 - Cross-platform support: Windows (PowerShell/cmd), macOS, Linux (bash/zsh)

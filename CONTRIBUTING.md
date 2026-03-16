@@ -32,7 +32,7 @@ Thank you for your interest in contributing to piz! This document provides guide
 ```bash
 cargo build            # Debug build
 cargo build --release  # Release build
-cargo test             # Run all tests (158 tests)
+cargo test             # Run all tests (157 tests)
 cargo fmt --all -- --check  # Check formatting
 cargo clippy -- -D warnings # Lint check
 ```
@@ -96,7 +96,7 @@ src/
 ├── cli.rs           # clap argument definitions (with clap_complete)
 ├── config.rs        # Config loading + setup wizard (12 provider presets)
 ├── context.rs       # System context (OS, shell, cwd, arch, git, package manager)
-├── i18n.rs          # UI translations (zh/en/ja) including injection messages
+├── i18n.rs          # UI translations (zh/en) including injection messages
 ├── llm/
 │   ├── mod.rs       # LlmBackend trait + factory + retry/backoff
 │   ├── prompt.rs    # Prompt templates (translate, fix, explain, chat, multi-candidate)
@@ -137,7 +137,7 @@ src/
 1. Add a variant to `InjectionReason` enum in `src/danger.rs`
 2. Add regex pattern tuple in `detect_injection()` patterns list
 3. Add `inject_*` field to `T` struct in `src/i18n.rs`
-4. Add translations for all 3 languages (zh, en, ja)
+4. Add translations for all languages (zh, en)
 5. Add match arm in `InjectionReason::message()`
 6. Add test case in `danger.rs` tests
 7. Update `all_langs_have_translations` test in `i18n.rs`

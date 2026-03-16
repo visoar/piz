@@ -3,14 +3,12 @@
 pub enum Lang {
     Zh,
     En,
-    Ja,
 }
 
 impl Lang {
     pub fn from_code(s: &str) -> Self {
         match s.to_lowercase().as_str() {
             "en" => Lang::En,
-            "ja" => Lang::Ja,
             _ => Lang::Zh,
         }
     }
@@ -19,7 +17,6 @@ impl Lang {
         match self {
             Lang::Zh => "zh",
             Lang::En => "en",
-            Lang::Ja => "ja",
         }
     }
 }
@@ -112,7 +109,6 @@ pub fn t(lang: Lang) -> &'static T {
     match lang {
         Lang::Zh => &ZH,
         Lang::En => &EN,
-        Lang::Ja => &JA,
     }
 }
 
@@ -264,80 +260,6 @@ static EN: T = T {
     inject_config_file_attack: "Suspicious: curl with config file may read sensitive data",
 };
 
-static JA: T = T {
-    cached: "(キャッシュ)",
-    command_explanation: "コマンド解説：",
-    diagnosis: "診断：",
-    cancelled: "キャンセルしました。",
-    thinking: "考え中...",
-    analyzing: "分析中...",
-
-    danger_warning: "危険なコマンドです！データ損失やシステム障害を引き起こす可能性があります。",
-    modify_warning: "このコマンドはファイルやシステム設定を変更します。",
-
-    confirm_dangerous: "⚠ 本当にこの危険なコマンドを実行しますか？",
-    yes_execute: "はい、実行する（リスクを理解しています）",
-    no_cancel: "いいえ、キャンセル",
-    edit_command: "コマンドを編集",
-    execute: "[Y] 実行",
-    cancel: "[n] キャンセル",
-    edit: "[e] 編集",
-    edit_prompt: "コマンドを編集",
-    exit_code: "終了コード",
-
-    no_piz_record: "piz の実行記録が見つかりません。シェル履歴を読み込んでいます...",
-    last_from_history: "履歴のコマンド：",
-    last_succeeded: "前回のコマンドは成功しました。修正の必要はありません。",
-    failed_command: "失敗したコマンド：",
-
-    auto_fix_prompt: "コマンドが失敗しました。自動修復しますか？",
-    auto_fix_attempting: "エラーを分析して修復を試みています...",
-    auto_fix_failed: "自動修復に失敗しました。理由：",
-
-    wizard_title: "⚙ piz 設定ウィザード",
-    select_backend: "デフォルトの LLM バックエンドを選択",
-
-    auto_confirm_prompt: "安全なコマンドを確認なしで自動実行しますか？",
-    extra_backends: "他のバックエンドも設定しますか？",
-    config_saved: "✔ 設定を保存しました：",
-    config_validated: "✔ 設定の検証に成功しました。",
-    config_edit_hint: "後で編集できます：",
-    config_rerun_hint: "または再実行：piz config --init",
-    config_overwrite: "設定は既に存在します。上書きしますか？",
-    api_key_prompt: "APIキー",
-    model_prompt: "モデル名",
-    select_provider: "APIプロバイダーを選択",
-    base_url_prompt: "API ベース URL",
-    custom_url_prompt: "カスタム API URL（プロキシ）を使用しますか？",
-    add_openai: "OpenAI 互換バックエンドを追加しますか？",
-    add_claude: "Claude バックエンドを追加しますか？",
-    add_gemini: "Gemini バックエンドを追加しますか？",
-    add_ollama: "Ollama バックエンドを追加しますか？",
-    ollama_host: "Ollama ホスト",
-
-    chat_title: "インタラクティブモード",
-    chat_hint: "リクエストを入力するか、'exit'/'quit' で終了します。",
-    bye: "さようなら！",
-
-    chat_help_desc: "/help - コマンド一覧  /clear - 履歴クリア  /history - 履歴表示",
-    chat_clear_desc: "チャット履歴をクリア",
-    chat_history_desc: "チャット履歴を表示",
-    chat_cleared: "チャット履歴をクリアしました。",
-    chat_unknown_cmd: "不明なコマンドです。/help で利用可能なコマンドを確認してください。",
-
-    select_command: "実行するコマンドを選択",
-
-    inject_env_exfiltration: "疑わしい：機密環境変数が漏洩する可能性があります",
-    inject_base64_shell: "疑わしい：Base64エンコードされたペイロードがシェルにパイプされています",
-    inject_reverse_shell: "疑わしい：リバースシェルの可能性があります",
-    inject_eval_remote: "疑わしい：リモートコンテンツのeval実行",
-    inject_source_remote: "疑わしい：プロセス置換によるリモートコンテンツの読み込み",
-    inject_overwrite_config: "疑わしい：シェル設定ファイルの上書き",
-    inject_crontab_modify: "疑わしい：パイプによるcrontabの変更",
-    inject_download_execute: "疑わしい：ダウンロード-実行チェーンが検出されました",
-    inject_config_file_attack: "疑わしい：curlの設定ファイルが機密データを読み取る可能性があります",
-};
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -346,8 +268,8 @@ mod tests {
     fn lang_from_code() {
         assert_eq!(Lang::from_code("zh"), Lang::Zh);
         assert_eq!(Lang::from_code("en"), Lang::En);
-        assert_eq!(Lang::from_code("ja"), Lang::Ja);
         assert_eq!(Lang::from_code("EN"), Lang::En);
+        assert_eq!(Lang::from_code("ja"), Lang::Zh); // unknown -> default
         assert_eq!(Lang::from_code("unknown"), Lang::Zh); // default
         assert_eq!(Lang::from_code(""), Lang::Zh);
     }
@@ -356,12 +278,11 @@ mod tests {
     fn lang_code_roundtrip() {
         assert_eq!(Lang::from_code(Lang::Zh.code()), Lang::Zh);
         assert_eq!(Lang::from_code(Lang::En.code()), Lang::En);
-        assert_eq!(Lang::from_code(Lang::Ja.code()), Lang::Ja);
     }
 
     #[test]
     fn all_langs_have_translations() {
-        for lang in [Lang::Zh, Lang::En, Lang::Ja] {
+        for lang in [Lang::Zh, Lang::En] {
             let tr = t(lang);
             assert!(!tr.cached.is_empty(), "{:?}: cached", lang);
             assert!(

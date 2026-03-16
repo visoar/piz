@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-piz is a Rust CLI tool that translates natural language into shell commands using LLM backends (OpenAI-compatible, Claude, Gemini, Ollama). It includes security layers (injection detection with i18n, danger classification), SQLite caching with LRU eviction, multi-language UI (zh/en/ja), interactive chat mode, multi-candidate selection, execution history, shell completions, pipe mode, and auto-fix on command failure with retry.
+piz is a Rust CLI tool that translates natural language into shell commands using LLM backends (OpenAI-compatible, Claude, Gemini, Ollama). It includes security layers (injection detection with i18n, danger classification), SQLite caching with LRU eviction, multi-language UI (zh/en), interactive chat mode, multi-candidate selection, execution history, shell completions, pipe mode, and auto-fix on command failure with retry.
 
 ## Build & Development Commands
 
 ```bash
 cargo build                # Debug build
 cargo build --release      # Release build
-cargo test                 # Run all tests (158 tests: 150 unit + 8 integration)
+cargo test                 # Run all tests (157 tests: 149 unit + 8 integration)
 cargo test <test_name>     # Run a single test by name
 cargo fmt --all -- --check # Check formatting
 cargo clippy -- -D warnings # Lint (CI treats warnings as errors)
@@ -62,6 +62,6 @@ Requires Rust 1.70+. On Windows: MinGW-w64 or MSVC toolchain.
 
 1. Add variant to `InjectionReason` enum in `src/danger.rs`
 2. Add regex pattern in `detect_injection()` function
-3. Add `inject_*` field to `T` struct in `src/i18n.rs` with translations for all 3 languages
+3. Add `inject_*` field to `T` struct in `src/i18n.rs` with translations for all languages (zh/en)
 4. Implement `message()` match arm in `InjectionReason`
 5. Add test case

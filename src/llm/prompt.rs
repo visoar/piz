@@ -53,7 +53,6 @@ fn shell_hints(shell: &str) -> &'static str {
 fn lang_display(lang: &str) -> &'static str {
     match lang {
         "zh" => "Chinese (简体中文)",
-        "ja" => "Japanese (日本語)",
         _ => "English",
     }
 }
@@ -501,12 +500,6 @@ mod tests {
         assert!(system.contains("Chinese"));
     }
 
-    #[test]
-    fn translate_prompt_ja_language() {
-        let (system, _) = build_translate_prompt(&test_ctx(), "test", "ja");
-        assert!(system.contains("Japanese"));
-    }
-
     // ── explain prompt ──
 
     #[test]
@@ -579,8 +572,8 @@ mod tests {
 
     #[test]
     fn fix_prompt_respects_language() {
-        let (system, _) = build_fix_prompt(&test_ctx(), "cmd", 1, "err", "ja");
-        assert!(system.contains("Japanese"));
+        let (system, _) = build_fix_prompt(&test_ctx(), "cmd", 1, "err", "zh");
+        assert!(system.contains("Chinese"));
     }
 
     // ── shell_hints ──
