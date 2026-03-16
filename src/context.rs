@@ -109,17 +109,20 @@ mod tests {
 
 fn detect_shell() -> String {
     if cfg!(target_os = "windows") {
-        // Check parent process or common env vars
-        if std::env::var("PSModulePath").is_ok() {
-            return "PowerShell".into();
+        // Detect by checking the parent process name
+        if let Some(shell) = detect_windows_parent_shell() {
+            return shell;
         }
-        if std::env::var("SHELL")
-            .ok()
-            .map(|s| s.contains("bash"))
-            .unwrap_or(false)
-        {
-            return "bash".into();
+        // Fallback: check SHELL env for Git Bash / MSYS2
+        if let Ok(sh) = std::env::var("SHELL") {
+            if sh.contains("bash") {
+                return "bash".into();
+            }
+            if sh.contains("zsh") {
+                return "zsh".into();
+            }
         }
+        // Default to cmd on Windows (safer than assuming PowerShell)
         return "cmd".into();
     }
 
@@ -129,4 +132,72 @@ fn detect_shell() -> String {
         .next()
         .unwrap_or("bash")
         .to_string()
+}
+
+/// Detect the parent shell on Windows by walking up the process tree.
+/// Returns Some("PowerShell"), Some("cmd"), Some("bash"), etc.
+#[cfg(target_os = "windows")]
+fn detect_windows_parent_shell() -> Option<String> {
+    use std::process::Command;
+
+    // Use WMIC to get the parent process ID, then resolve its name.
+    // This avoids depending on PSModulePath which exists system-wide.
+    let pid = std::process::id();
+
+    // Get parent PID
+    let output = Command::new("cmd")
+        .args([
+            "/C",
+            &format!(
+                "wmic process where ProcessId={} get ParentProcessId /format:value",
+                pid
+            ),
+        ])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let ppid: u32 = stdout.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("ParentProcessId=")
+            .and_then(|v| v.trim().parse().ok())
+    })?;
+
+    // Get parent process name
+    let output = Command::new("cmd")
+        .args([
+            "/C",
+            &format!(
+                "wmic process where ProcessId={} get Name /format:value",
+                ppid
+            ),
+        ])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let name = stdout.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("Name=")
+            .map(|v| v.trim().to_lowercase())
+    })?;
+
+    if name.contains("powershell") || name.contains("pwsh") {
+        Some("PowerShell".into())
+    } else if name.contains("cmd") {
+        Some("cmd".into())
+    } else if name.contains("bash") {
+        Some("bash".into())
+    } else if name.contains("zsh") {
+        Some("zsh".into())
+    } else if name.contains("fish") {
+        Some("fish".into())
+    } else if name.contains("nu") {
+        Some("nu".into())
+    } else {
+        None
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn detect_windows_parent_shell() -> Option<String> {
+    None
 }
