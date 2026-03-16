@@ -337,9 +337,13 @@ fn collect_openai_config(tr: &i18n::T) -> Result<String> {
         .with_initial_text(default_model)
         .interact_text()?;
 
-    let mut section = format!("[openai]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n");
+    let mut section = format!(
+        "[openai]\napi_key = {}\nmodel = {}\n",
+        toml_escape(&api_key),
+        toml_escape(&model)
+    );
     if !base_url.is_empty() && base_url != "https://api.openai.com" {
-        section.push_str(&format!("base_url = \"{base_url}\"\n"));
+        section.push_str(&format!("base_url = {}\n", toml_escape(&base_url)));
     }
 
     Ok(section)
@@ -367,14 +371,18 @@ fn collect_claude_config(tr: &i18n::T) -> Result<String> {
         .default(false)
         .interact()?;
 
-    let mut section = format!("[claude]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n");
+    let mut section = format!(
+        "[claude]\napi_key = {}\nmodel = {}\n",
+        toml_escape(&api_key),
+        toml_escape(&model)
+    );
 
     if use_custom_url {
         let base_url: String = dialoguer::Input::new()
             .with_prompt(format!("  {}", tr.base_url_prompt))
             .with_initial_text("https://api.anthropic.com")
             .interact_text()?;
-        section.push_str(&format!("base_url = \"{base_url}\"\n"));
+        section.push_str(&format!("base_url = {}\n", toml_escape(&base_url)));
     }
 
     Ok(section)
@@ -398,7 +406,9 @@ fn collect_gemini_config(tr: &i18n::T) -> Result<String> {
         .interact_text()?;
 
     Ok(format!(
-        "[gemini]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n"
+        "[gemini]\napi_key = {}\nmodel = {}\n",
+        toml_escape(&api_key),
+        toml_escape(&model)
     ))
 }
 
@@ -417,8 +427,16 @@ fn collect_ollama_config(tr: &i18n::T) -> Result<String> {
         .interact_text()?;
 
     Ok(format!(
-        "[ollama]\nhost = \"{host}\"\nmodel = \"{model}\"\n"
+        "[ollama]\nhost = {}\nmodel = {}\n",
+        toml_escape(&host),
+        toml_escape(&model)
     ))
+}
+
+/// Escape a string value for TOML output (handles quotes, backslashes, etc.)
+fn toml_escape(s: &str) -> String {
+    let value = toml::Value::String(s.to_string());
+    value.to_string()
 }
 
 /// Parse a TOML string into Config (useful for testing)

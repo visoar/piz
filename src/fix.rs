@@ -76,11 +76,9 @@ pub fn parse_fix_response(response: &str) -> Result<(String, String, DangerLevel
         return extract_fix_json(&v);
     }
 
-    if let Some(start) = response.find('{') {
-        if let Some(end) = response.rfind('}') {
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&response[start..=end]) {
-                return extract_fix_json(&v);
-            }
+    if let Some(json_str) = crate::extract_json_block(response) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+            return extract_fix_json(&v);
         }
     }
 

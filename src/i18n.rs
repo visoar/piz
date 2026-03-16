@@ -80,6 +80,11 @@ pub struct T {
     pub add_gemini: &'static str,
     pub add_ollama: &'static str,
     pub ollama_host: &'static str,
+
+    // ── chat mode ──
+    pub chat_title: &'static str,
+    pub chat_hint: &'static str,
+    pub bye: &'static str,
 }
 
 pub fn t(lang: Lang) -> &'static T {
@@ -140,6 +145,10 @@ static ZH: T = T {
     add_gemini: "添加 Gemini 后端？",
     add_ollama: "添加 Ollama 后端？",
     ollama_host: "Ollama 地址",
+
+    chat_title: "交互模式",
+    chat_hint: "输入你的请求，或 'exit'/'quit' 退出。",
+    bye: "再见！",
 };
 
 static EN: T = T {
@@ -192,6 +201,10 @@ static EN: T = T {
     add_gemini: "Add Gemini backend?",
     add_ollama: "Add Ollama backend?",
     ollama_host: "Ollama host",
+
+    chat_title: "interactive mode",
+    chat_hint: "Type your request, or 'exit'/'quit' to leave.",
+    bye: "Bye!",
 };
 
 static JA: T = T {
@@ -244,6 +257,10 @@ static JA: T = T {
     add_gemini: "Gemini バックエンドを追加しますか？",
     add_ollama: "Ollama バックエンドを追加しますか？",
     ollama_host: "Ollama ホスト",
+
+    chat_title: "インタラクティブモード",
+    chat_hint: "リクエストを入力するか、'exit'/'quit' で終了します。",
+    bye: "さようなら！",
 };
 
 #[cfg(test)]
@@ -271,11 +288,52 @@ mod tests {
     fn all_langs_have_translations() {
         for lang in [Lang::Zh, Lang::En, Lang::Ja] {
             let tr = t(lang);
-            assert!(!tr.cached.is_empty());
-            assert!(!tr.thinking.is_empty());
-            assert!(!tr.danger_warning.is_empty());
-            assert!(!tr.execute.is_empty());
-            assert!(!tr.wizard_title.is_empty());
+            assert!(!tr.cached.is_empty(), "{:?}: cached", lang);
+            assert!(!tr.command_explanation.is_empty(), "{:?}: command_explanation", lang);
+            assert!(!tr.diagnosis.is_empty(), "{:?}: diagnosis", lang);
+            assert!(!tr.cancelled.is_empty(), "{:?}: cancelled", lang);
+            assert!(!tr.thinking.is_empty(), "{:?}: thinking", lang);
+            assert!(!tr.analyzing.is_empty(), "{:?}: analyzing", lang);
+            assert!(!tr.danger_warning.is_empty(), "{:?}: danger_warning", lang);
+            assert!(!tr.modify_warning.is_empty(), "{:?}: modify_warning", lang);
+            assert!(!tr.confirm_dangerous.is_empty(), "{:?}: confirm_dangerous", lang);
+            assert!(!tr.yes_execute.is_empty(), "{:?}: yes_execute", lang);
+            assert!(!tr.no_cancel.is_empty(), "{:?}: no_cancel", lang);
+            assert!(!tr.edit_command.is_empty(), "{:?}: edit_command", lang);
+            assert!(!tr.execute.is_empty(), "{:?}: execute", lang);
+            assert!(!tr.cancel.is_empty(), "{:?}: cancel", lang);
+            assert!(!tr.edit.is_empty(), "{:?}: edit", lang);
+            assert!(!tr.edit_prompt.is_empty(), "{:?}: edit_prompt", lang);
+            assert!(!tr.exit_code.is_empty(), "{:?}: exit_code", lang);
+            assert!(!tr.no_piz_record.is_empty(), "{:?}: no_piz_record", lang);
+            assert!(!tr.last_from_history.is_empty(), "{:?}: last_from_history", lang);
+            assert!(!tr.last_succeeded.is_empty(), "{:?}: last_succeeded", lang);
+            assert!(!tr.failed_command.is_empty(), "{:?}: failed_command", lang);
+            assert!(!tr.auto_fix_prompt.is_empty(), "{:?}: auto_fix_prompt", lang);
+            assert!(!tr.auto_fix_attempting.is_empty(), "{:?}: auto_fix_attempting", lang);
+            assert!(!tr.auto_fix_failed.is_empty(), "{:?}: auto_fix_failed", lang);
+            assert!(!tr.wizard_title.is_empty(), "{:?}: wizard_title", lang);
+            assert!(!tr.select_backend.is_empty(), "{:?}: select_backend", lang);
+            assert!(!tr.auto_confirm_prompt.is_empty(), "{:?}: auto_confirm_prompt", lang);
+            assert!(!tr.extra_backends.is_empty(), "{:?}: extra_backends", lang);
+            assert!(!tr.config_saved.is_empty(), "{:?}: config_saved", lang);
+            assert!(!tr.config_validated.is_empty(), "{:?}: config_validated", lang);
+            assert!(!tr.config_edit_hint.is_empty(), "{:?}: config_edit_hint", lang);
+            assert!(!tr.config_rerun_hint.is_empty(), "{:?}: config_rerun_hint", lang);
+            assert!(!tr.config_overwrite.is_empty(), "{:?}: config_overwrite", lang);
+            assert!(!tr.api_key_prompt.is_empty(), "{:?}: api_key_prompt", lang);
+            assert!(!tr.model_prompt.is_empty(), "{:?}: model_prompt", lang);
+            assert!(!tr.select_provider.is_empty(), "{:?}: select_provider", lang);
+            assert!(!tr.base_url_prompt.is_empty(), "{:?}: base_url_prompt", lang);
+            assert!(!tr.custom_url_prompt.is_empty(), "{:?}: custom_url_prompt", lang);
+            assert!(!tr.add_openai.is_empty(), "{:?}: add_openai", lang);
+            assert!(!tr.add_claude.is_empty(), "{:?}: add_claude", lang);
+            assert!(!tr.add_gemini.is_empty(), "{:?}: add_gemini", lang);
+            assert!(!tr.add_ollama.is_empty(), "{:?}: add_ollama", lang);
+            assert!(!tr.ollama_host.is_empty(), "{:?}: ollama_host", lang);
+            assert!(!tr.chat_title.is_empty(), "{:?}: chat_title", lang);
+            assert!(!tr.chat_hint.is_empty(), "{:?}: chat_hint", lang);
+            assert!(!tr.bye.is_empty(), "{:?}: bye", lang);
         }
     }
 }

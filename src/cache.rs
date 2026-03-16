@@ -51,7 +51,7 @@ impl Cache {
     pub fn get(&self, query: &str, os: &str, shell: &str) -> Result<Option<(String, String)>> {
         let key = Self::make_key(query, os, shell);
         let now = now_secs();
-        let ttl_secs = self.ttl_hours * 3600;
+        let ttl_secs = self.ttl_hours.saturating_mul(3600);
 
         let mut stmt = self.conn.prepare(
             "SELECT command, danger FROM cache WHERE key = ?1 AND (created_at + ?2) > ?3",

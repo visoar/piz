@@ -7,6 +7,10 @@ pub mod prompt;
 use crate::config::Config;
 use anyhow::Result;
 use async_trait::async_trait;
+use std::time::Duration;
+
+/// Default HTTP request timeout for LLM API calls
+const DEFAULT_HTTP_TIMEOUT: Duration = Duration::from_secs(120);
 
 /// A message in a conversation
 #[derive(Debug, Clone)]
@@ -19,15 +23,17 @@ pub struct Message {
 pub trait LlmBackend: Send + Sync {
     async fn chat(&self, system: &str, user: &str) -> Result<String>;
 
-    /// Multi-turn chat with message history
-    async fn chat_with_history(&self, system: &str, messages: &[Message]) -> Result<String> {
-        // Default: ignore history, just use the last user message
-        if let Some(last) = messages.iter().rev().find(|m| m.role == "user") {
-            self.chat(system, &last.content).await
-        } else {
-            anyhow::bail!("No user message in history")
-        }
-    }
+    /// Multi-turn chat with message history.
+    /// All backends must implement this for chat mode to work correctly.
+    async fn chat_with_history(&self, system: &str, messages: &[Message]) -> Result<String>;
+}
+
+/// Create a shared reqwest::Client with timeout configured
+pub(crate) fn build_http_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .timeout(DEFAULT_HTTP_TIMEOUT)
+        .build()
+        .unwrap_or_else(|_| reqwest::Client::new())
 }
 
 /// A mock backend for testing that returns a preset response.
@@ -40,6 +46,10 @@ pub struct MockBackend {
 #[async_trait]
 impl LlmBackend for MockBackend {
     async fn chat(&self, _system: &str, _user: &str) -> Result<String> {
+        Ok(self.response.clone())
+    }
+
+    async fn chat_with_history(&self, _system: &str, _messages: &[Message]) -> Result<String> {
         Ok(self.response.clone())
     }
 }

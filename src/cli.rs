@@ -14,7 +14,7 @@ pub struct Cli {
     #[arg(short = 'e', long = "explain")]
     pub explain: Option<String>,
 
-    /// LLM backend to use (openai, claude, ollama)
+    /// LLM backend to use (openai, claude, gemini, ollama)
     #[arg(short, long)]
     pub backend: Option<String>,
 

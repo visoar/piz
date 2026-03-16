@@ -21,11 +21,12 @@ pub async fn run_chat(
     let mut history: Vec<Message> = Vec::new();
 
     println!();
-    println!("  {} {}", "piz".green().bold(), "interactive mode".dimmed());
     println!(
-        "  {}",
-        "Type your request, or 'exit'/'quit' to leave.".dimmed()
+        "  {} {}",
+        "piz".green().bold(),
+        tr.chat_title.dimmed()
     );
+    println!("  {}", tr.chat_hint.dimmed());
     println!();
 
     while let Ok(input) = dialoguer::Input::<String>::new()
@@ -50,10 +51,13 @@ pub async fn run_chat(
             content: trimmed.to_string(),
         });
 
-        // Truncate history if too long
+        // Truncate history if too long, ensuring we keep pairs (drain even number)
         if history.len() > max_history {
             let excess = history.len() - max_history;
-            history.drain(..excess);
+            // Round up to even number to preserve user/assistant pairing
+            let drain_count = if excess % 2 == 0 { excess } else { excess + 1 };
+            let drain_count = drain_count.min(history.len() - 1);
+            history.drain(..drain_count);
         }
 
         // Call LLM with full history
@@ -83,14 +87,12 @@ pub async fn run_chat(
             }
         };
 
-        // Injection check
+        // Injection check - don't add malicious responses to history
         if let Some(reason) = danger::detect_injection(&command) {
             ui::print_danger(tr);
             ui::print_info(reason);
-            history.push(Message {
-                role: "assistant".into(),
-                content: response.clone(),
-            });
+            // Remove the user message that triggered this
+            history.pop();
             continue;
         }
 
@@ -109,6 +111,6 @@ pub async fn run_chat(
     }
 
     println!();
-    ui::print_info("Bye!");
+    ui::print_info(tr.bye);
     Ok(())
 }

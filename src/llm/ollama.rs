@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use async_trait::async_trait;
 use serde_json::json;
 
-use super::LlmBackend;
+use super::{LlmBackend, Message};
 use crate::config::OllamaConfig;
 
 pub struct OllamaBackend {
@@ -14,28 +14,18 @@ impl OllamaBackend {
     pub fn new(config: OllamaConfig) -> Self {
         Self {
             config,
-            client: reqwest::Client::new(),
+            client: super::build_http_client(),
         }
     }
-}
 
-#[async_trait]
-impl LlmBackend for OllamaBackend {
-    async fn chat(&self, system: &str, user: &str) -> Result<String> {
-        let url = format!("{}/api/chat", self.config.host.trim_end_matches('/'));
+    fn build_url(&self) -> String {
+        format!("{}/api/chat", self.config.host.trim_end_matches('/'))
+    }
 
-        let body = json!({
-            "model": self.config.model,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user}
-            ],
-            "stream": false
-        });
-
+    async fn send_request(&self, body: serde_json::Value) -> Result<String> {
         let resp = self
             .client
-            .post(&url)
+            .post(self.build_url())
             .json(&body)
             .send()
             .await
@@ -48,7 +38,8 @@ impl LlmBackend for OllamaBackend {
             .context("Failed to read Ollama response")?;
 
         if !status.is_success() {
-            anyhow::bail!("Ollama API error ({}): {}", status, text);
+            let preview: String = text.chars().take(500).collect();
+            anyhow::bail!("Ollama API error ({}): {}", status, preview);
         }
 
         let parsed: serde_json::Value =
@@ -58,5 +49,33 @@ impl LlmBackend for OllamaBackend {
             .as_str()
             .map(|s| s.to_string())
             .ok_or_else(|| anyhow::anyhow!("Unexpected Ollama response format"))
+    }
+}
+
+#[async_trait]
+impl LlmBackend for OllamaBackend {
+    async fn chat(&self, system: &str, user: &str) -> Result<String> {
+        let body = json!({
+            "model": self.config.model,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user}
+            ],
+            "stream": false
+        });
+        self.send_request(body).await
+    }
+
+    async fn chat_with_history(&self, system: &str, messages: &[Message]) -> Result<String> {
+        let mut msgs = vec![json!({"role": "system", "content": system})];
+        for m in messages {
+            msgs.push(json!({"role": m.role, "content": m.content}));
+        }
+        let body = json!({
+            "model": self.config.model,
+            "messages": msgs,
+            "stream": false
+        });
+        self.send_request(body).await
     }
 }

@@ -159,8 +159,8 @@ fn save_last_exec(command: &str, exit_code: i32, stdout: &str, stderr: &str) -> 
 /// Decode command output bytes to String.
 /// On Windows, if UTF-8 decode fails, try GBK (CP936) for Chinese Windows.
 fn decode_output(bytes: &[u8]) -> String {
-    match String::from_utf8(bytes.to_vec()) {
-        Ok(s) => s,
+    match std::str::from_utf8(bytes) {
+        Ok(s) => s.to_string(),
         Err(_) => {
             // Fallback: try GBK decoding for Chinese Windows
             #[cfg(target_os = "windows")]
@@ -195,7 +195,7 @@ fn decode_gbk(bytes: &[u8]) -> String {
             return String::from_utf8_lossy(bytes).to_string();
         }
         let mut wide: Vec<u16> = vec![0; len as usize];
-        windows_sys::Win32::Globalization::MultiByteToWideChar(
+        let written = windows_sys::Win32::Globalization::MultiByteToWideChar(
             codepage,
             0,
             bytes.as_ptr(),
@@ -203,6 +203,10 @@ fn decode_gbk(bytes: &[u8]) -> String {
             wide.as_mut_ptr(),
             len,
         );
+        if written <= 0 {
+            return String::from_utf8_lossy(bytes).to_string();
+        }
+        wide.truncate(written as usize);
         OsString::from_wide(&wide).to_string_lossy().to_string()
     }
 }

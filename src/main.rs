@@ -77,7 +77,7 @@ async fn run() -> Result<()> {
                 )
                 .await;
             }
-            Commands::Config { .. } => unreachable!(),
+            Commands::Config { .. } => unreachable!("Config handled earlier in run()"),
         }
     }
 
@@ -129,7 +129,7 @@ async fn run() -> Result<()> {
         .map(|last| llm::prompt::PrevContext {
             command: last.command,
             exit_code: last.exit_code,
-            stdout_preview: last.stderr.lines().take(3).collect::<Vec<_>>().join("\n"),
+            stdout_preview: last.stdout.lines().take(3).collect::<Vec<_>>().join("\n"),
         });
     let (system_prompt, user_prompt) = llm::prompt::build_translate_prompt_with_context(
         &ctx,
@@ -159,12 +159,7 @@ async fn run() -> Result<()> {
     // Cache the result
     if !cli.no_cache {
         let c = cache::Cache::open(cfg.cache_ttl_hours)?;
-        let danger_str = match final_danger {
-            DangerLevel::Safe => "safe",
-            DangerLevel::Warning => "warning",
-            DangerLevel::Dangerous => "dangerous",
-        };
-        let _ = c.put(&query, &ctx.os, &ctx.shell, &command, danger_str);
+        let _ = c.put(&query, &ctx.os, &ctx.shell, &command, final_danger.as_str());
     }
 
     handle_command_with_autofix(
@@ -191,7 +186,15 @@ async fn handle_command_with_autofix(
     let choice = executor::prompt_user(command, danger, auto_confirm, tr)?;
     let exec_result = match choice {
         UserChoice::Execute => Some(executor::execute_command(command, tr)?),
-        UserChoice::Edit(ref edited) => Some(executor::execute_command(edited, tr)?),
+        UserChoice::Edit(ref edited) => {
+            // Re-check edited command for injection and danger
+            if let Some(reason) = danger::detect_injection(edited) {
+                ui::print_danger(tr);
+                ui::print_info(reason);
+                anyhow::bail!("Edited command blocked: {}", reason);
+            }
+            Some(executor::execute_command(edited, tr)?)
+        }
         UserChoice::Cancel => {
             ui::print_info(tr.cancelled);
             return Ok(());
@@ -293,6 +296,11 @@ async fn try_auto_fix(
                 }
             }
             UserChoice::Edit(edited) => {
+                // Re-check edited command for injection
+                if let Some(reason) = danger::detect_injection(&edited) {
+                    ui::print_error(&format!("{} {}", tr.auto_fix_failed, reason));
+                    return Ok(());
+                }
                 let (code, _out, err) = executor::execute_command(&edited, tr)?;
                 if code == 0 {
                     return Ok(());
@@ -300,6 +308,16 @@ async fn try_auto_fix(
                 current_cmd = edited;
                 current_stderr = err;
                 current_exit_code = code;
+
+                if attempt < MAX_AUTO_FIX_RETRIES {
+                    println!();
+                    ui::print_info(&format!(
+                        "{} ({}/{})",
+                        tr.auto_fix_attempting,
+                        attempt + 1,
+                        MAX_AUTO_FIX_RETRIES
+                    ));
+                }
             }
             UserChoice::Cancel => {
                 return Ok(());
@@ -330,10 +348,20 @@ pub fn handle_command_in_chat(
     };
     match choice {
         UserChoice::Execute => {
-            let _ = executor::execute_command(command, tr);
+            if let Err(e) = executor::execute_command(command, tr) {
+                ui::print_error(&format!("{:#}", e));
+            }
         }
         UserChoice::Edit(edited) => {
-            let _ = executor::execute_command(&edited, tr);
+            // Re-check edited command for injection
+            if let Some(reason) = danger::detect_injection(&edited) {
+                ui::print_danger(tr);
+                ui::print_info(reason);
+                return;
+            }
+            if let Err(e) = executor::execute_command(&edited, tr) {
+                ui::print_error(&format!("{:#}", e));
+            }
         }
         UserChoice::Cancel => {
             ui::print_info(tr.cancelled);
@@ -379,32 +407,26 @@ pub fn parse_llm_response(response: &str) -> Result<(String, DangerLevel)> {
         }
     }
 
-    // Level 2: Find JSON block in text
-    if let Some(start) = trimmed.find('{') {
-        if let Some(end) = trimmed.rfind('}') {
-            let json_str = &trimmed[start..=end];
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
-                if let Some(refused) = check_refusal(&v) {
-                    anyhow::bail!("{}", refused);
-                }
-                if let Some(cmd) = v["command"].as_str() {
-                    let danger = v["danger"]
-                        .as_str()
-                        .map(DangerLevel::from_str_level)
-                        .unwrap_or(DangerLevel::Safe);
-                    return Ok((cmd.to_string(), danger));
-                }
+    // Level 2: Find JSON block in text (match braces properly)
+    if let Some(json_str) = extract_json_block(trimmed) {
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
+            if let Some(refused) = check_refusal(&v) {
+                anyhow::bail!("{}", refused);
+            }
+            if let Some(cmd) = v["command"].as_str() {
+                let danger = v["danger"]
+                    .as_str()
+                    .map(DangerLevel::from_str_level)
+                    .unwrap_or(DangerLevel::Safe);
+                return Ok((cmd.to_string(), danger));
             }
         }
     }
 
-    // Level 3: Extract backtick-wrapped command
-    if let Some(start) = trimmed.find('`') {
-        if let Some(end) = trimmed[start + 1..].find('`') {
-            let cmd = &trimmed[start + 1..start + 1 + end];
-            if !cmd.is_empty() {
-                return Ok((cmd.to_string(), DangerLevel::Safe));
-            }
+    // Level 3: Extract backtick-wrapped command (handle triple backticks)
+    if let Some(cmd) = extract_backtick_command(trimmed) {
+        if !cmd.is_empty() {
+            return Ok((cmd.to_string(), DangerLevel::Safe));
         }
     }
 
@@ -421,6 +443,60 @@ pub fn parse_llm_response(response: &str) -> Result<(String, DangerLevel)> {
     }
 
     Ok((cmd, DangerLevel::Safe))
+}
+
+/// Extract a JSON object from text by matching braces
+pub fn extract_json_block(text: &str) -> Option<&str> {
+    let start = text.find('{')?;
+    let mut depth = 0;
+    let mut in_string = false;
+    let mut escape = false;
+    for (i, ch) in text[start..].char_indices() {
+        if escape {
+            escape = false;
+            continue;
+        }
+        match ch {
+            '\\' if in_string => escape = true,
+            '"' => in_string = !in_string,
+            '{' if !in_string => depth += 1,
+            '}' if !in_string => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(&text[start..start + i + 1]);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// Extract command from backtick-wrapped text, handling both single and triple backticks
+fn extract_backtick_command(text: &str) -> Option<&str> {
+    // Try triple backticks first (```...```)
+    if let Some(start) = text.find("```") {
+        let after = &text[start + 3..];
+        // Skip optional language tag on the same line
+        let content_start = after.find('\n').map(|i| i + 1).unwrap_or(0);
+        let content = &after[content_start..];
+        if let Some(end) = content.find("```") {
+            let cmd = content[..end].trim();
+            if !cmd.is_empty() {
+                return Some(cmd);
+            }
+        }
+    }
+    // Try single backticks
+    if let Some(start) = text.find('`') {
+        if let Some(end) = text[start + 1..].find('`') {
+            let cmd = &text[start + 1..start + 1 + end];
+            if !cmd.is_empty() {
+                return Some(cmd);
+            }
+        }
+    }
+    None
 }
 
 #[cfg(test)]

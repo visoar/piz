@@ -327,9 +327,11 @@ Error: ModuleNotFoundError: No module named 'flask'
         lang_name = lang_name,
     );
 
+    // Truncate stderr and wrap in delimiters to prevent prompt injection
+    let stderr_preview: String = stderr.chars().take(1000).collect();
     let user = format!(
-        "Failed command: {}\nExit code: {}\nError output:\n{}",
-        command, exit_code, stderr
+        "Failed command: {}\nExit code: {}\nError output:\n<stderr_output>\n{}\n</stderr_output>",
+        command, exit_code, stderr_preview
     );
     (system, user)
 }

@@ -14,7 +14,7 @@ impl OpenAiBackend {
     pub fn new(config: OpenAiConfig) -> Self {
         Self {
             config,
-            client: reqwest::Client::new(),
+            client: super::build_http_client(),
         }
     }
 
@@ -45,7 +45,8 @@ impl OpenAiBackend {
             .context("Failed to read OpenAI response")?;
 
         if !status.is_success() {
-            anyhow::bail!("OpenAI API error ({}): {}", status, text);
+            let preview: String = text.chars().take(500).collect();
+            anyhow::bail!("OpenAI API error ({}): {}", status, preview);
         }
 
         let parsed: serde_json::Value =
