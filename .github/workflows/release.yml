@@ -18,6 +18,11 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             os: ubuntu-latest
             archive: tar.gz
+            deb: true
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-latest
+            archive: tar.gz
+            cross: true
           - target: x86_64-apple-darwin
             os: macos-latest
             archive: tar.gz
@@ -27,6 +32,7 @@ jobs:
           - target: x86_64-pc-windows-msvc
             os: windows-latest
             archive: zip
+            msi: true
 
     steps:
       - uses: actions/checkout@v4
@@ -35,9 +41,20 @@ jobs:
           targets: ${{ matrix.target }}
       - uses: Swatinem/rust-cache@v2
 
+      # Cross-compilation dependencies for Linux ARM64
+      - name: Install cross-compilation tools
+        if: matrix.cross
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu g++-aarch64-linux-gnu
+          echo "CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CC_aarch64_unknown_linux_gnu=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
+          echo "CXX_aarch64_unknown_linux_gnu=aarch64-linux-gnu-g++" >> $GITHUB_ENV
+
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
 
+      # ── Package: tar.gz (Unix) ──
       - name: Package (Unix)
         if: matrix.archive == 'tar.gz'
         run: |
@@ -45,17 +62,55 @@ jobs:
           tar czf ../../../piz-${{ matrix.target }}.tar.gz piz
           cd ../../..
 
-      - name: Package (Windows)
+      # ── Package: zip (Windows) ──
+      - name: Package (Windows zip)
         if: matrix.archive == 'zip'
         shell: pwsh
         run: |
           Compress-Archive -Path target/${{ matrix.target }}/release/piz.exe -DestinationPath piz-${{ matrix.target }}.zip
 
-      - name: Upload artifact
+      # ── Package: MSI (Windows) ──
+      - name: Install cargo-wix
+        if: matrix.msi
+        run: cargo install cargo-wix --version 0.3.9
+      - name: Init WiX (generate if missing)
+        if: matrix.msi
+        shell: pwsh
+        run: |
+          if (-not (Test-Path "wix/main.wxs")) {
+            cargo wix init --force
+          }
+      - name: Build MSI
+        if: matrix.msi
+        run: cargo wix --no-build --nocapture --target ${{ matrix.target }}
+      - name: Rename MSI
+        if: matrix.msi
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem target/wix/*.msi | Select-Object -First 1
+          Copy-Item $msi.FullName "piz-${{ matrix.target }}.msi"
+
+      # ── Package: deb (Linux x86_64) ──
+      - name: Install cargo-deb
+        if: matrix.deb
+        run: cargo install cargo-deb
+      - name: Build deb
+        if: matrix.deb
+        run: |
+          cargo deb --target ${{ matrix.target }} --no-build
+          cp target/${{ matrix.target }}/debian/*.deb piz-${{ matrix.target }}.deb
+
+      # ── Upload artifacts ──
+      - name: Upload artifacts
         uses: actions/upload-artifact@v4
         with:
           name: piz-${{ matrix.target }}
-          path: piz-${{ matrix.target }}.*
+          path: |
+            piz-${{ matrix.target }}.tar.gz
+            piz-${{ matrix.target }}.zip
+            piz-${{ matrix.target }}.msi
+            piz-${{ matrix.target }}.deb
+          if-no-files-found: ignore
 
   release:
     name: Create Release
@@ -74,3 +129,5 @@ jobs:
           files: |
             piz-*.tar.gz
             piz-*.zip
+            piz-*.msi
+            piz-*.deb

@@ -43,18 +43,35 @@ $ piz list all files larger than 100MB
 
 ### Install
 
-**From source (requires Rust toolchain):**
+**macOS / Linux (one-liner):**
 
 ```bash
-git clone https://github.com/AriesOxO/piz.git
-cd piz
-cargo build --release
-# Binary at: target/release/piz (or piz.exe on Windows)
+curl -fsSL https://raw.githubusercontent.com/AriesOxO/piz/main/install.sh | bash
 ```
 
-**From releases:**
+**Windows (PowerShell):**
 
-Download the latest binary from [Releases](https://github.com/AriesOxO/piz/releases).
+```powershell
+iwr -useb https://raw.githubusercontent.com/AriesOxO/piz/main/install.ps1 | iex
+```
+
+**Cargo (any platform):**
+
+```bash
+cargo install piz
+```
+
+**Manual download:**
+
+Download binaries, `.msi` (Windows) or `.deb` (Debian/Ubuntu) from [Releases](https://github.com/AriesOxO/piz/releases).
+
+| Platform | Downloads |
+|----------|-----------|
+| Windows x86_64 | `.msi` `.zip` |
+| macOS x86_64 | `.tar.gz` |
+| macOS ARM64 (Apple Silicon) | `.tar.gz` |
+| Linux x86_64 | `.tar.gz` `.deb` |
+| Linux ARM64 | `.tar.gz` |
 
 ### Setup
 

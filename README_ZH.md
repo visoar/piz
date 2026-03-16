@@ -43,18 +43,35 @@ $ piz 查看磁盘使用情况
 
 ### 安装
 
-**从源码构建（需要 Rust 工具链）：**
+**macOS / Linux（一键安装）：**
 
 ```bash
-git clone https://github.com/AriesOxO/piz.git
-cd piz
-cargo build --release
-# 二进制文件：target/release/piz（Windows 下为 piz.exe）
+curl -fsSL https://raw.githubusercontent.com/AriesOxO/piz/main/install.sh | bash
 ```
 
-**从 Release 下载：**
+**Windows（PowerShell）：**
 
-前往 [Releases](https://github.com/AriesOxO/piz/releases) 下载最新版本。
+```powershell
+iwr -useb https://raw.githubusercontent.com/AriesOxO/piz/main/install.ps1 | iex
+```
+
+**Cargo（全平台）：**
+
+```bash
+cargo install piz
+```
+
+**手动下载：**
+
+前往 [Releases](https://github.com/AriesOxO/piz/releases) 下载二进制文件、`.msi`（Windows）或 `.deb`（Debian/Ubuntu）。
+
+| 平台 | 下载格式 |
+|------|---------|
+| Windows x86_64 | `.msi` `.zip` |
+| macOS x86_64 | `.tar.gz` |
+| macOS ARM64 (Apple Silicon) | `.tar.gz` |
+| Linux x86_64 | `.tar.gz` `.deb` |
+| Linux ARM64 | `.tar.gz` |
 
 ### 配置
 

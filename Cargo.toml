@@ -28,6 +28,20 @@ thiserror = "1"
 indicatif = "0.17"
 async-trait = "0.1"
 
+[package.metadata.deb]
+section = "utils"
+assets = [
+    ["target/release/piz", "usr/bin/", "755"],
+    ["README.md", "usr/share/doc/piz/", "644"],
+    ["LICENSE", "usr/share/doc/piz/", "644"],
+]
+
+[package.metadata.wix]
+upgrade-guid = "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"
+path-guid = "B2C3D4E5-F6A7-8901-BCDE-F12345678901"
+license = false
+eula = false
+
 [dev-dependencies]
 tempfile = "3"
 rusqlite = { version = "0.31", features = ["bundled"] }
