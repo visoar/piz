@@ -72,6 +72,7 @@ pub struct T {
     pub custom_url_prompt: &'static str,
     pub add_openai: &'static str,
     pub add_claude: &'static str,
+    pub add_gemini: &'static str,
     pub add_ollama: &'static str,
     pub ollama_host: &'static str,
 }
@@ -127,6 +128,7 @@ static ZH: T = T {
     custom_url_prompt: "是否使用自定义 API 地址（代理）？",
     add_openai: "添加 OpenAI 兼容后端？",
     add_claude: "添加 Claude 后端？",
+    add_gemini: "添加 Gemini 后端？",
     add_ollama: "添加 Ollama 后端？",
     ollama_host: "Ollama 地址",
 };
@@ -174,6 +176,7 @@ static EN: T = T {
     custom_url_prompt: "Use custom API URL (proxy)?",
     add_openai: "Add OpenAI-compatible backend?",
     add_claude: "Add Claude backend?",
+    add_gemini: "Add Gemini backend?",
     add_ollama: "Add Ollama backend?",
     ollama_host: "Ollama host",
 };
@@ -221,6 +224,7 @@ static JA: T = T {
     custom_url_prompt: "カスタム API URL（プロキシ）を使用しますか？",
     add_openai: "OpenAI 互換バックエンドを追加しますか？",
     add_claude: "Claude バックエンドを追加しますか？",
+    add_gemini: "Gemini バックエンドを追加しますか？",
     add_ollama: "Ollama バックエンドを追加しますか？",
     ollama_host: "Ollama ホスト",
 };

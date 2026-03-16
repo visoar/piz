@@ -1,4 +1,5 @@
 pub mod claude;
+pub mod gemini;
 pub mod ollama;
 pub mod openai;
 pub mod prompt;
@@ -46,6 +47,13 @@ pub fn create_backend(
                 .ok_or_else(|| anyhow::anyhow!("Claude config not found in config.toml"))?;
             Ok(Box::new(claude::ClaudeBackend::new(cfg.clone())))
         }
+        "gemini" => {
+            let cfg = config
+                .gemini
+                .as_ref()
+                .ok_or_else(|| anyhow::anyhow!("Gemini config not found in config.toml"))?;
+            Ok(Box::new(gemini::GeminiBackend::new(cfg.clone())))
+        }
         "ollama" => {
             let cfg = config
                 .ollama
@@ -54,7 +62,7 @@ pub fn create_backend(
             Ok(Box::new(ollama::OllamaBackend::new(cfg.clone())))
         }
         other => anyhow::bail!(
-            "Unknown backend: {}. Supported: openai, claude, ollama",
+            "Unknown backend: {}. Supported: openai, claude, gemini, ollama",
             other
         ),
     }
@@ -77,6 +85,7 @@ mod tests {
                 base_url: None,
             }),
             claude: None,
+            gemini: None,
             ollama: None,
         }
     }
@@ -117,6 +126,7 @@ mod tests {
             language: "zh".into(),
             openai: None,
             claude: None,
+            gemini: None,
             ollama: None,
         };
         let result = create_backend(&cfg, None);

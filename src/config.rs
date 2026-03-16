@@ -16,6 +16,7 @@ pub struct Config {
     pub language: String,
     pub openai: Option<OpenAiConfig>,
     pub claude: Option<ClaudeConfig>,
+    pub gemini: Option<GeminiConfig>,
     pub ollama: Option<OllamaConfig>,
 }
 
@@ -31,6 +32,14 @@ pub struct OpenAiConfig {
 pub struct ClaudeConfig {
     pub api_key: String,
     #[serde(default = "default_claude_model")]
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct GeminiConfig {
+    pub api_key: String,
+    #[serde(default = "default_gemini_model")]
     pub model: String,
     pub base_url: Option<String>,
 }
@@ -57,6 +66,9 @@ fn default_openai_model() -> String {
 }
 fn default_claude_model() -> String {
     "claude-sonnet-4-20250514".into()
+}
+fn default_gemini_model() -> String {
+    "gemini-2.5-flash".into()
 }
 fn default_ollama_host() -> String {
     "http://localhost:11434".into()
@@ -127,8 +139,9 @@ pub fn init_config() -> Result<()> {
 
     // Step 1: choose backend
     let backends = &[
-        "openai (DeepSeek, Moonshot, SiliconFlow, ...)",
+        "openai (DeepSeek, SiliconFlow, OpenRouter, ...)",
         "claude",
+        "gemini (Google)",
         "ollama (local)",
     ];
     let backend_idx = dialoguer::Select::new()
@@ -139,18 +152,21 @@ pub fn init_config() -> Result<()> {
     let backend_name = match backend_idx {
         0 => "openai",
         1 => "claude",
-        2 => "ollama",
+        2 => "gemini",
+        3 => "ollama",
         _ => "openai",
     };
 
     // Step 2: collect backend-specific config
     let mut openai_section = String::new();
     let mut claude_section = String::new();
+    let mut gemini_section = String::new();
     let mut ollama_section = String::new();
 
     match backend_name {
         "openai" => openai_section = collect_openai_config(tr)?,
         "claude" => claude_section = collect_claude_config(tr)?,
+        "gemini" => gemini_section = collect_gemini_config(tr)?,
         "ollama" => ollama_section = collect_ollama_config(tr)?,
         _ => {}
     }
@@ -186,6 +202,15 @@ pub fn init_config() -> Result<()> {
         {
             claude_section = collect_claude_config(tr)?;
         }
+        if backend_name != "gemini"
+            && gemini_section.is_empty()
+            && dialoguer::Confirm::new()
+                .with_prompt(tr.add_gemini)
+                .default(false)
+                .interact()?
+        {
+            gemini_section = collect_gemini_config(tr)?;
+        }
         if backend_name != "ollama"
             && ollama_section.is_empty()
             && dialoguer::Confirm::new()
@@ -213,6 +238,9 @@ pub fn init_config() -> Result<()> {
     }
     if !claude_section.is_empty() {
         content.push_str(&format!("\n{}", claude_section));
+    }
+    if !gemini_section.is_empty() {
+        content.push_str(&format!("\n{}", gemini_section));
     }
     if !ollama_section.is_empty() {
         content.push_str(&format!("\n{}", ollama_section));
@@ -244,7 +272,15 @@ fn collect_openai_config(tr: &i18n::T) -> Result<String> {
         "OpenAI (api.openai.com)",
         "DeepSeek (api.deepseek.com)",
         "SiliconFlow (api.siliconflow.cn)",
-        "Moonshot (api.moonshot.cn)",
+        "OpenRouter (openrouter.ai)",
+        "Moonshot / Kimi (api.moonshot.cn)",
+        "Zhipu / GLM (open.bigmodel.cn)",
+        "Qianfan / Baidu (qianfan.baidubce.com)",
+        "DashScope / Alibaba (dashscope.aliyuncs.com)",
+        "Mistral (api.mistral.ai)",
+        "Together (api.together.xyz)",
+        "Minimax (api.minimax.io)",
+        "BytePlus / Volcengine (byteplus)",
         "Custom URL",
     ];
     let preset_idx = dialoguer::Select::new()
@@ -257,7 +293,24 @@ fn collect_openai_config(tr: &i18n::T) -> Result<String> {
         0 => ("https://api.openai.com", "gpt-4o-mini"),
         1 => ("https://api.deepseek.com", "deepseek-chat"),
         2 => ("https://api.siliconflow.cn", "Qwen/Qwen3-8B"),
-        3 => ("https://api.moonshot.cn", "moonshot-v1-8k"),
+        3 => ("https://openrouter.ai/api/v1", "auto"),
+        4 => ("https://api.moonshot.cn", "moonshot-v1-8k"),
+        5 => ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
+        6 => ("https://qianfan.baidubce.com/v2", "deepseek-v3"),
+        7 => (
+            "https://dashscope.aliyuncs.com/compatible-mode/v1",
+            "qwen-plus",
+        ),
+        8 => ("https://api.mistral.ai/v1", "mistral-small-latest"),
+        9 => (
+            "https://api.together.xyz/v1",
+            "meta-llama/Meta-Llama-3-8B-Instruct",
+        ),
+        10 => ("https://api.minimax.io/v1", "MiniMax-M1"),
+        11 => (
+            "https://api.byteplus.volcengineapi.com/v1",
+            "doubao-1.5-pro-32k",
+        ),
         _ => ("", ""),
     };
 
@@ -320,6 +373,28 @@ fn collect_claude_config(tr: &i18n::T) -> Result<String> {
     }
 
     Ok(section)
+}
+
+fn collect_gemini_config(tr: &i18n::T) -> Result<String> {
+    println!();
+    println!("  -- Google Gemini --");
+
+    let api_key: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.api_key_prompt))
+        .interact_text()?;
+
+    if api_key.is_empty() {
+        anyhow::bail!("API key cannot be empty");
+    }
+
+    let model: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.model_prompt))
+        .with_initial_text("gemini-2.5-flash")
+        .interact_text()?;
+
+    Ok(format!(
+        "[gemini]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n"
+    ))
 }
 
 fn collect_ollama_config(tr: &i18n::T) -> Result<String> {
