@@ -1,0 +1,222 @@
+use anyhow::{Context, Result};
+use rusqlite::Connection;
+use sha2::{Digest, Sha256};
+
+use crate::config;
+
+pub struct Cache {
+    conn: Connection,
+    ttl_hours: u64,
+}
+
+impl Cache {
+    pub fn open(ttl_hours: u64) -> Result<Self> {
+        let dir = config::piz_dir()?;
+        std::fs::create_dir_all(&dir)?;
+        let db_path = dir.join("cache.db");
+        Self::open_at(&db_path, ttl_hours)
+    }
+
+    pub fn open_at(db_path: &std::path::Path, ttl_hours: u64) -> Result<Self> {
+        let conn = Connection::open(db_path)
+            .with_context(|| format!("Failed to open cache db: {}", db_path.display()))?;
+
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS cache (
+                key TEXT PRIMARY KEY,
+                command TEXT NOT NULL,
+                danger TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+        )?;
+
+        Ok(Self { conn, ttl_hours })
+    }
+
+    /// Open an in-memory cache (for testing)
+    #[cfg(test)]
+    pub fn open_in_memory(ttl_hours: u64) -> Result<Self> {
+        let conn = Connection::open_in_memory()?;
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS cache (
+                key TEXT PRIMARY KEY,
+                command TEXT NOT NULL,
+                danger TEXT NOT NULL,
+                created_at INTEGER NOT NULL
+            )",
+        )?;
+        Ok(Self { conn, ttl_hours })
+    }
+
+    pub fn get(&self, query: &str, os: &str, shell: &str) -> Result<Option<(String, String)>> {
+        let key = Self::make_key(query, os, shell);
+        let now = now_secs();
+        let ttl_secs = self.ttl_hours * 3600;
+
+        let mut stmt = self.conn.prepare(
+            "SELECT command, danger FROM cache WHERE key = ?1 AND (created_at + ?2) > ?3",
+        )?;
+
+        let result = stmt.query_row(rusqlite::params![key, ttl_secs, now], |row| {
+            let cmd: String = row.get(0)?;
+            let danger: String = row.get(1)?;
+            Ok((cmd, danger))
+        });
+
+        match result {
+            Ok(val) => Ok(Some(val)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
+    }
+
+    pub fn put(
+        &self,
+        query: &str,
+        os: &str,
+        shell: &str,
+        command: &str,
+        danger: &str,
+    ) -> Result<()> {
+        let key = Self::make_key(query, os, shell);
+        self.conn.execute(
+            "INSERT OR REPLACE INTO cache (key, command, danger, created_at) VALUES (?1, ?2, ?3, ?4)",
+            rusqlite::params![key, command, danger, now_secs()],
+        )?;
+        Ok(())
+    }
+
+    pub fn clear(&self) -> Result<u64> {
+        let count = self.conn.execute("DELETE FROM cache", [])?;
+        Ok(count as u64)
+    }
+
+    pub(crate) fn make_key(query: &str, os: &str, shell: &str) -> String {
+        let normalized = query.trim().to_lowercase();
+        let input = format!("{}|{}|{}", normalized, os, shell);
+        let mut hasher = Sha256::new();
+        hasher.update(input.as_bytes());
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+fn now_secs() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn make_key_deterministic() {
+        let k1 = Cache::make_key("list files", "Linux", "bash");
+        let k2 = Cache::make_key("list files", "Linux", "bash");
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn make_key_normalized_case() {
+        let k1 = Cache::make_key("List Files", "Linux", "bash");
+        let k2 = Cache::make_key("list files", "Linux", "bash");
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn make_key_trimmed() {
+        let k1 = Cache::make_key("  list files  ", "Linux", "bash");
+        let k2 = Cache::make_key("list files", "Linux", "bash");
+        assert_eq!(k1, k2);
+    }
+
+    #[test]
+    fn make_key_differs_by_os() {
+        let k1 = Cache::make_key("list files", "Linux", "bash");
+        let k2 = Cache::make_key("list files", "Windows", "bash");
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn make_key_differs_by_shell() {
+        let k1 = Cache::make_key("list files", "Linux", "bash");
+        let k2 = Cache::make_key("list files", "Linux", "zsh");
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn make_key_differs_by_query() {
+        let k1 = Cache::make_key("list files", "Linux", "bash");
+        let k2 = Cache::make_key("show disk usage", "Linux", "bash");
+        assert_ne!(k1, k2);
+    }
+
+    #[test]
+    fn put_and_get_roundtrip() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        cache
+            .put("list files", "Linux", "bash", "ls -la", "safe")
+            .unwrap();
+
+        let result = cache.get("list files", "Linux", "bash").unwrap();
+        assert_eq!(result, Some(("ls -la".to_string(), "safe".to_string())));
+    }
+
+    #[test]
+    fn get_miss_returns_none() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        let result = cache.get("nonexistent", "Linux", "bash").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn put_overwrites() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        cache.put("q", "Linux", "bash", "old_cmd", "safe").unwrap();
+        cache
+            .put("q", "Linux", "bash", "new_cmd", "warning")
+            .unwrap();
+
+        let (cmd, danger) = cache.get("q", "Linux", "bash").unwrap().unwrap();
+        assert_eq!(cmd, "new_cmd");
+        assert_eq!(danger, "warning");
+    }
+
+    #[test]
+    fn clear_removes_all() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        cache.put("q1", "Linux", "bash", "cmd1", "safe").unwrap();
+        cache.put("q2", "Linux", "bash", "cmd2", "safe").unwrap();
+
+        let count = cache.clear().unwrap();
+        assert_eq!(count, 2);
+
+        assert_eq!(cache.get("q1", "Linux", "bash").unwrap(), None);
+        assert_eq!(cache.get("q2", "Linux", "bash").unwrap(), None);
+    }
+
+    #[test]
+    fn expired_entry_not_returned() {
+        // TTL = 0 hours means everything is expired immediately
+        let cache = Cache::open_in_memory(0).unwrap();
+        cache.put("q", "Linux", "bash", "ls", "safe").unwrap();
+
+        // With TTL 0, created_at + 0 is not > now, so it should miss
+        let result = cache.get("q", "Linux", "bash").unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn cross_platform_isolation() {
+        let cache = Cache::open_in_memory(168).unwrap();
+        cache
+            .put("list files", "Linux", "bash", "ls -la", "safe")
+            .unwrap();
+
+        // Same query on Windows should not hit
+        let result = cache.get("list files", "Windows", "PowerShell").unwrap();
+        assert_eq!(result, None);
+    }
+}

@@ -1,0 +1,151 @@
+use anyhow::Result;
+use colored::*;
+use dialoguer::{Input, Select};
+use serde::{Deserialize, Serialize};
+use std::process::Command;
+
+use crate::config;
+use crate::danger::DangerLevel;
+use crate::i18n;
+use crate::ui;
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct LastExec {
+    pub command: String,
+    pub exit_code: i32,
+    pub stderr: String,
+    pub timestamp: u64,
+}
+
+pub enum UserChoice {
+    Execute,
+    Cancel,
+    Edit(String),
+}
+
+pub fn prompt_user(
+    command: &str,
+    danger: DangerLevel,
+    auto_confirm: bool,
+    tr: &i18n::T,
+) -> Result<UserChoice> {
+    // Show danger warnings
+    match danger {
+        DangerLevel::Dangerous => ui::print_danger(tr),
+        DangerLevel::Warning => ui::print_warning(tr),
+        DangerLevel::Safe => {}
+    }
+
+    ui::print_command(command);
+    println!();
+
+    // Auto-confirm safe commands if configured
+    if auto_confirm && danger == DangerLevel::Safe {
+        return Ok(UserChoice::Execute);
+    }
+
+    // Dangerous commands: always require explicit confirmation, cannot be skipped
+    if danger == DangerLevel::Dangerous {
+        let items = vec![tr.yes_execute, tr.no_cancel, tr.edit_command];
+        let selection = Select::new()
+            .with_prompt(tr.confirm_dangerous.red().bold().to_string())
+            .items(&items)
+            .default(1) // Default to cancel
+            .interact()?;
+
+        return match selection {
+            0 => Ok(UserChoice::Execute),
+            2 => {
+                let edited: String = Input::new()
+                    .with_prompt(tr.edit_prompt)
+                    .with_initial_text(command)
+                    .interact_text()?;
+                Ok(UserChoice::Edit(edited))
+            }
+            _ => Ok(UserChoice::Cancel),
+        };
+    }
+
+    // Normal prompt for safe/warning
+    let items = vec![tr.execute, tr.cancel, tr.edit];
+    let selection = Select::new().items(&items).default(0).interact()?;
+
+    match selection {
+        0 => Ok(UserChoice::Execute),
+        2 => {
+            let edited: String = Input::new()
+                .with_prompt(tr.edit_prompt)
+                .with_initial_text(command)
+                .interact_text()?;
+            Ok(UserChoice::Edit(edited))
+        }
+        _ => Ok(UserChoice::Cancel),
+    }
+}
+
+pub fn execute_command(command: &str, tr: &i18n::T) -> Result<(i32, String, String)> {
+    let shell_cmd = if cfg!(target_os = "windows") {
+        if std::env::var("PSModulePath").is_ok() {
+            Command::new("powershell")
+                .args(["-NoProfile", "-Command", command])
+                .output()
+        } else {
+            Command::new("cmd").args(["/C", command]).output()
+        }
+    } else {
+        Command::new("sh").args(["-c", command]).output()
+    };
+
+    let output = shell_cmd?;
+    let exit_code = output.status.code().unwrap_or(-1);
+    let stdout = String::from_utf8_lossy(&output.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+
+    if !stdout.is_empty() {
+        print!("{}", stdout);
+    }
+    if !stderr.is_empty() {
+        eprint!("{}", stderr.dimmed());
+    }
+
+    save_last_exec(command, exit_code, &stderr)?;
+
+    if exit_code != 0 {
+        println!(
+            "\n{} {}: {}",
+            "✗".red(),
+            tr.exit_code,
+            exit_code.to_string().red()
+        );
+    }
+
+    Ok((exit_code, stdout, stderr))
+}
+
+fn save_last_exec(command: &str, exit_code: i32, stderr: &str) -> Result<()> {
+    let dir = config::piz_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.join("last_exec.json");
+
+    let last = LastExec {
+        command: command.to_string(),
+        exit_code,
+        stderr: stderr.to_string(),
+        timestamp: std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs(),
+    };
+
+    let json = serde_json::to_string_pretty(&last)?;
+    std::fs::write(path, json)?;
+    Ok(())
+}
+
+pub fn load_last_exec() -> Result<LastExec> {
+    let path = config::piz_dir()?.join("last_exec.json");
+    let content = std::fs::read_to_string(&path)
+        .map_err(|_| anyhow::anyhow!("No previous command execution found."))?;
+    let last: LastExec = serde_json::from_str(&content)?;
+    Ok(last)
+}

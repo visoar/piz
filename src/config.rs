@@ -1,0 +1,432 @@
+use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
+use std::path::PathBuf;
+
+use crate::i18n::{self, Lang};
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct Config {
+    #[serde(default = "default_backend")]
+    pub default_backend: String,
+    #[serde(default = "default_cache_ttl")]
+    pub cache_ttl_hours: u64,
+    #[serde(default)]
+    pub auto_confirm_safe: bool,
+    #[serde(default = "default_language")]
+    pub language: String,
+    pub openai: Option<OpenAiConfig>,
+    pub claude: Option<ClaudeConfig>,
+    pub ollama: Option<OllamaConfig>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OpenAiConfig {
+    pub api_key: String,
+    #[serde(default = "default_openai_model")]
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct ClaudeConfig {
+    pub api_key: String,
+    #[serde(default = "default_claude_model")]
+    pub model: String,
+    pub base_url: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize, Clone)]
+pub struct OllamaConfig {
+    #[serde(default = "default_ollama_host")]
+    pub host: String,
+    #[serde(default = "default_ollama_model")]
+    pub model: String,
+}
+
+fn default_backend() -> String {
+    "openai".into()
+}
+fn default_cache_ttl() -> u64 {
+    168
+}
+fn default_language() -> String {
+    "zh".into()
+}
+fn default_openai_model() -> String {
+    "gpt-4o-mini".into()
+}
+fn default_claude_model() -> String {
+    "claude-sonnet-4-20250514".into()
+}
+fn default_ollama_host() -> String {
+    "http://localhost:11434".into()
+}
+fn default_ollama_model() -> String {
+    "llama3".into()
+}
+
+pub fn piz_dir() -> Result<PathBuf> {
+    let home = dirs::home_dir().context("Cannot determine home directory")?;
+    Ok(home.join(".piz"))
+}
+
+pub fn config_path() -> Result<PathBuf> {
+    Ok(piz_dir()?.join("config.toml"))
+}
+
+pub fn load_config() -> Result<Config> {
+    let path = config_path()?;
+    if !path.exists() {
+        println!("No configuration found. Let's set up piz for the first time.\n");
+        init_config()?;
+        // If init was aborted or config still missing, bail
+        if !path.exists() {
+            anyhow::bail!("Config file not created. Run `piz config --init` to try again.");
+        }
+    }
+    let content = std::fs::read_to_string(&path)
+        .with_context(|| format!("Failed to read {}", path.display()))?;
+    let config: Config =
+        toml::from_str(&content).with_context(|| format!("Failed to parse {}", path.display()))?;
+    Ok(config)
+}
+
+pub fn init_config() -> Result<()> {
+    let dir = piz_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    let path = config_path()?;
+
+    // Step 0: choose language first (always show trilingual)
+    let lang_items = &["中文", "English", "日本語"];
+    let lang_idx = dialoguer::Select::new()
+        .with_prompt("选择语言 / Select language / 言語を選択")
+        .items(lang_items)
+        .default(0)
+        .interact()?;
+    let lang = match lang_idx {
+        1 => Lang::En,
+        2 => Lang::Ja,
+        _ => Lang::Zh,
+    };
+    let tr = i18n::t(lang);
+
+    if path.exists() {
+        let overwrite = dialoguer::Confirm::new()
+            .with_prompt(format!("{} ({})", tr.config_overwrite, path.display()))
+            .default(false)
+            .interact()?;
+        if !overwrite {
+            println!("{}", tr.cancelled);
+            return Ok(());
+        }
+    }
+
+    println!();
+    println!("  {}", tr.wizard_title);
+    println!();
+
+    // Step 1: choose backend
+    let backends = &[
+        "openai (DeepSeek, Moonshot, SiliconFlow, ...)",
+        "claude",
+        "ollama (local)",
+    ];
+    let backend_idx = dialoguer::Select::new()
+        .with_prompt(tr.select_backend)
+        .items(backends)
+        .default(0)
+        .interact()?;
+    let backend_name = match backend_idx {
+        0 => "openai",
+        1 => "claude",
+        2 => "ollama",
+        _ => "openai",
+    };
+
+    // Step 2: collect backend-specific config
+    let mut openai_section = String::new();
+    let mut claude_section = String::new();
+    let mut ollama_section = String::new();
+
+    match backend_name {
+        "openai" => openai_section = collect_openai_config(tr)?,
+        "claude" => claude_section = collect_claude_config(tr)?,
+        "ollama" => ollama_section = collect_ollama_config(tr)?,
+        _ => {}
+    }
+
+    // Step 3: auto_confirm
+    let auto_confirm = dialoguer::Confirm::new()
+        .with_prompt(tr.auto_confirm_prompt)
+        .default(true)
+        .interact()?;
+
+    // Step 4: additional backends
+    let extra = dialoguer::Confirm::new()
+        .with_prompt(tr.extra_backends)
+        .default(false)
+        .interact()?;
+
+    if extra {
+        if backend_name != "openai"
+            && openai_section.is_empty()
+            && dialoguer::Confirm::new()
+                .with_prompt(tr.add_openai)
+                .default(false)
+                .interact()?
+        {
+            openai_section = collect_openai_config(tr)?;
+        }
+        if backend_name != "claude"
+            && claude_section.is_empty()
+            && dialoguer::Confirm::new()
+                .with_prompt(tr.add_claude)
+                .default(false)
+                .interact()?
+        {
+            claude_section = collect_claude_config(tr)?;
+        }
+        if backend_name != "ollama"
+            && ollama_section.is_empty()
+            && dialoguer::Confirm::new()
+                .with_prompt(tr.add_ollama)
+                .default(false)
+                .interact()?
+        {
+            ollama_section = collect_ollama_config(tr)?;
+        }
+    }
+
+    // Assemble config
+    let mut content = format!(
+        "default_backend = \"{backend}\"\n\
+         cache_ttl_hours = 168\n\
+         auto_confirm_safe = {auto_confirm}\n\
+         language = \"{lang}\"\n",
+        backend = backend_name,
+        auto_confirm = auto_confirm,
+        lang = lang.code(),
+    );
+
+    if !openai_section.is_empty() {
+        content.push_str(&format!("\n{}", openai_section));
+    }
+    if !claude_section.is_empty() {
+        content.push_str(&format!("\n{}", claude_section));
+    }
+    if !ollama_section.is_empty() {
+        content.push_str(&format!("\n{}", ollama_section));
+    }
+
+    std::fs::write(&path, &content)?;
+
+    println!();
+    println!("  {} {}", tr.config_saved, path.display());
+    println!();
+
+    match parse_config(&content) {
+        Ok(_) => println!("  {}", tr.config_validated),
+        Err(e) => println!("  ⚠ {}", e),
+    }
+
+    println!();
+    println!("  {} {}", tr.config_edit_hint, path.display());
+    println!("  {}", tr.config_rerun_hint);
+    println!();
+    Ok(())
+}
+
+fn collect_openai_config(tr: &i18n::T) -> Result<String> {
+    println!();
+    println!("  -- OpenAI-compatible --");
+
+    let presets = &[
+        "OpenAI (api.openai.com)",
+        "DeepSeek (api.deepseek.com)",
+        "SiliconFlow (api.siliconflow.cn)",
+        "Moonshot (api.moonshot.cn)",
+        "Custom URL",
+    ];
+    let preset_idx = dialoguer::Select::new()
+        .with_prompt(tr.select_provider)
+        .items(presets)
+        .default(0)
+        .interact()?;
+
+    let (default_url, default_model) = match preset_idx {
+        0 => ("https://api.openai.com", "gpt-4o-mini"),
+        1 => ("https://api.deepseek.com", "deepseek-chat"),
+        2 => ("https://api.siliconflow.cn", "Qwen/Qwen3-8B"),
+        3 => ("https://api.moonshot.cn", "moonshot-v1-8k"),
+        _ => ("", ""),
+    };
+
+    let base_url: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.base_url_prompt))
+        .with_initial_text(default_url)
+        .interact_text()?;
+
+    let api_key: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.api_key_prompt))
+        .interact_text()?;
+
+    if api_key.is_empty() {
+        anyhow::bail!("API key cannot be empty");
+    }
+
+    let model: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.model_prompt))
+        .with_initial_text(default_model)
+        .interact_text()?;
+
+    let mut section = format!("[openai]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n");
+    if !base_url.is_empty() && base_url != "https://api.openai.com" {
+        section.push_str(&format!("base_url = \"{base_url}\"\n"));
+    }
+
+    Ok(section)
+}
+
+fn collect_claude_config(tr: &i18n::T) -> Result<String> {
+    println!();
+    println!("  -- Claude --");
+
+    let api_key: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.api_key_prompt))
+        .interact_text()?;
+
+    if api_key.is_empty() {
+        anyhow::bail!("API key cannot be empty");
+    }
+
+    let model: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.model_prompt))
+        .with_initial_text("claude-sonnet-4-20250514")
+        .interact_text()?;
+
+    let use_custom_url = dialoguer::Confirm::new()
+        .with_prompt(tr.custom_url_prompt)
+        .default(false)
+        .interact()?;
+
+    let mut section = format!("[claude]\napi_key = \"{api_key}\"\nmodel = \"{model}\"\n");
+
+    if use_custom_url {
+        let base_url: String = dialoguer::Input::new()
+            .with_prompt(format!("  {}", tr.base_url_prompt))
+            .with_initial_text("https://api.anthropic.com")
+            .interact_text()?;
+        section.push_str(&format!("base_url = \"{base_url}\"\n"));
+    }
+
+    Ok(section)
+}
+
+fn collect_ollama_config(tr: &i18n::T) -> Result<String> {
+    println!();
+    println!("  -- Ollama (local) --");
+
+    let host: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.ollama_host))
+        .with_initial_text("http://localhost:11434")
+        .interact_text()?;
+
+    let model: String = dialoguer::Input::new()
+        .with_prompt(format!("  {}", tr.model_prompt))
+        .with_initial_text("llama3")
+        .interact_text()?;
+
+    Ok(format!(
+        "[ollama]\nhost = \"{host}\"\nmodel = \"{model}\"\n"
+    ))
+}
+
+/// Parse a TOML string into Config (useful for testing)
+pub fn parse_config(content: &str) -> Result<Config> {
+    let config: Config = toml::from_str(content).context("Failed to parse config TOML")?;
+    Ok(config)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_full_config() {
+        let toml = r#"
+default_backend = "claude"
+cache_ttl_hours = 24
+auto_confirm_safe = true
+
+[openai]
+api_key = "sk-test"
+model = "gpt-4"
+base_url = "https://custom.api.com"
+
+[claude]
+api_key = "sk-ant-test"
+model = "claude-sonnet-4-20250514"
+
+[ollama]
+host = "http://localhost:11434"
+model = "llama3"
+"#;
+        let cfg = parse_config(toml).unwrap();
+        assert_eq!(cfg.default_backend, "claude");
+        assert_eq!(cfg.cache_ttl_hours, 24);
+        assert!(cfg.auto_confirm_safe);
+
+        let openai = cfg.openai.unwrap();
+        assert_eq!(openai.api_key, "sk-test");
+        assert_eq!(openai.model, "gpt-4");
+        assert_eq!(openai.base_url.unwrap(), "https://custom.api.com");
+
+        let claude = cfg.claude.unwrap();
+        assert_eq!(claude.api_key, "sk-ant-test");
+
+        let ollama = cfg.ollama.unwrap();
+        assert_eq!(ollama.host, "http://localhost:11434");
+        assert_eq!(ollama.model, "llama3");
+    }
+
+    #[test]
+    fn parse_minimal_config_uses_defaults() {
+        let toml = r#"
+[openai]
+api_key = "sk-test"
+"#;
+        let cfg = parse_config(toml).unwrap();
+        assert_eq!(cfg.default_backend, "openai");
+        assert_eq!(cfg.cache_ttl_hours, 168);
+        assert!(!cfg.auto_confirm_safe);
+        assert_eq!(cfg.openai.unwrap().model, "gpt-4o-mini");
+        assert!(cfg.claude.is_none());
+        assert!(cfg.ollama.is_none());
+    }
+
+    #[test]
+    fn parse_empty_config_ok() {
+        let cfg = parse_config("").unwrap();
+        assert_eq!(cfg.default_backend, "openai");
+        assert!(cfg.openai.is_none());
+    }
+
+    #[test]
+    fn parse_invalid_toml_errors() {
+        let result = parse_config("this is not [valid toml");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn piz_dir_under_home() {
+        let dir = piz_dir().unwrap();
+        assert!(dir.ends_with(".piz"));
+    }
+
+    #[test]
+    fn config_path_is_toml() {
+        let path = config_path().unwrap();
+        assert_eq!(path.extension().unwrap(), "toml");
+        assert!(path.ends_with("config.toml"));
+    }
+}

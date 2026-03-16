@@ -1,0 +1,35 @@
+[package]
+name = "piz"
+version = "0.2.0"
+edition = "2021"
+description = "Intelligent terminal command assistant - translate natural language to shell commands"
+license = "MIT"
+repository = "https://github.com/AriesOxO/piz"
+homepage = "https://github.com/AriesOxO/piz"
+keywords = ["cli", "ai", "terminal", "shell", "llm"]
+categories = ["command-line-utilities"]
+readme = "README.md"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
+tokio = { version = "1", features = ["full"] }
+reqwest = { version = "0.12", features = ["json"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+rusqlite = { version = "0.31", features = ["bundled"] }
+colored = "2"
+dialoguer = "0.11"
+sha2 = "0.10"
+dirs = "5"
+regex = "1"
+anyhow = "1"
+thiserror = "1"
+indicatif = "0.17"
+async-trait = "0.1"
+
+[dev-dependencies]
+tempfile = "3"
+rusqlite = { version = "0.31", features = ["bundled"] }
+serde_json = "1"
+toml = "0.8"
