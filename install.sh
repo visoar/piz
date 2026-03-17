@@ -73,6 +73,12 @@ main() {
     curl -fsSL "$url" -o "${tmpdir}/piz.tar.gz" || error "Download failed. Check if release exists for ${target}"
     tar xzf "${tmpdir}/piz.tar.gz" -C "$tmpdir"
 
+    # Ensure install directory exists
+    if [ ! -d "$INSTALL_DIR" ]; then
+        info "Creating ${INSTALL_DIR}"
+        sudo mkdir -p "$INSTALL_DIR"
+    fi
+
     # Install
     if [ -w "$INSTALL_DIR" ]; then
         mv "${tmpdir}/${BINARY}" "${INSTALL_DIR}/${BINARY}"
