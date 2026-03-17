@@ -93,7 +93,7 @@ async fn run() -> Result<()> {
     // Handle config subcommand before loading config
     if let Some(Commands::Config {
         init,
-        show,
+        show: _show,
         raw,
         reset,
     }) = &cli.command
@@ -117,7 +117,7 @@ async fn run() -> Result<()> {
             }
             return Ok(());
         }
-        if *show || !*raw {
+        if !*raw {
             let path = config::config_path()?;
             if path.exists() {
                 let content = std::fs::read_to_string(&path)?;
