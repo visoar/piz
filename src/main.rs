@@ -24,9 +24,36 @@ use crate::i18n::Lang;
 
 #[tokio::main]
 async fn main() {
+    enable_ansi_support();
     if let Err(e) = run().await {
         ui::print_error(&format!("{:#}", e));
         std::process::exit(1);
+    }
+}
+
+/// Enable ANSI/VT100 escape sequence support on Windows.
+/// Windows PowerShell 5.1 does not enable Virtual Terminal Processing by default,
+/// causing raw escape codes (like `␛[36m`) to be displayed instead of colors.
+/// VT support requires Windows 10 1511+; if SetConsoleMode fails (older Windows),
+/// we fall back to disabling colors entirely.
+fn enable_ansi_support() {
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::Console::{
+            GetConsoleMode, SetConsoleMode, ENABLE_VIRTUAL_TERMINAL_PROCESSING,
+        };
+        unsafe {
+            let handle =
+                std::io::stdout().as_raw_handle() as windows_sys::Win32::Foundation::HANDLE;
+            let mut mode: u32 = 0;
+            if GetConsoleMode(handle, &mut mode) != 0 {
+                // Try to enable VT processing; if it fails (old Windows), disable colors
+                if SetConsoleMode(handle, mode | ENABLE_VIRTUAL_TERMINAL_PROCESSING) == 0 {
+                    colored::control::set_override(false);
+                }
+            }
+        }
     }
 }
 
