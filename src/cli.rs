@@ -30,6 +30,10 @@ pub struct Cli {
     #[arg(long)]
     pub pipe: bool,
 
+    /// Eval mode: show UI normally, output confirmed command for shell wrapper to eval
+    #[arg(long)]
+    pub eval: bool,
+
     /// Number of candidate commands to generate (1-5)
     #[arg(short = 'n', long, default_value = "1")]
     pub candidates: u8,
@@ -70,6 +74,11 @@ pub enum Commands {
     Completions {
         /// Shell type (bash, zsh, fish, powershell)
         shell: clap_complete::Shell,
+    },
+    /// Generate shell integration code (bash, zsh, fish, powershell, cmd)
+    Init {
+        /// Shell type
+        shell: String,
     },
     /// Check for updates and upgrade piz
     Update,

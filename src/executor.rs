@@ -84,22 +84,33 @@ pub fn prompt_user(
     }
 }
 
+/// Convenience wrapper that auto-detects the shell. Used by integration tests.
+#[allow(dead_code)]
 pub fn execute_command(command: &str, tr: &i18n::T) -> Result<(i32, String, String)> {
+    execute_command_with_shell(command, "", tr)
+}
+
+/// Execute a command using the specified shell.
+/// If `shell` is provided, it determines how the command is executed on Windows.
+/// If empty, falls back to auto-detection.
+pub fn execute_command_with_shell(
+    command: &str,
+    shell: &str,
+    tr: &i18n::T,
+) -> Result<(i32, String, String)> {
     let shell_cmd = if cfg!(target_os = "windows") {
-        if std::env::var("PSModulePath").is_ok() {
-            // Force PowerShell to output UTF-8
-            let wrapped = format!(
-                "[Console]::OutputEncoding = [System.Text.Encoding]::UTF8; {}",
-                command
-            );
-            Command::new("powershell")
-                .args(["-NoProfile", "-Command", &wrapped])
-                .output()
-        } else {
-            // Force cmd to use UTF-8 codepage
-            Command::new("cmd")
-                .args(["/C", &format!("chcp 65001 >nul && {}", command)])
-                .output()
+        match shell {
+            "PowerShell" => run_powershell(command),
+            "cmd" => run_cmd(command),
+            "bash" | "zsh" | "fish" => run_unix_like(command),
+            _ => {
+                // Fallback: auto-detect (for callers that don't have context)
+                if is_powershell_parent() {
+                    run_powershell(command)
+                } else {
+                    run_cmd(command)
+                }
+            }
         }
     } else {
         Command::new("sh").args(["-c", command]).output()
@@ -154,6 +165,42 @@ fn save_last_exec(command: &str, exit_code: i32, stdout: &str, stderr: &str) -> 
     let json = serde_json::to_string_pretty(&last)?;
     std::fs::write(path, json)?;
     Ok(())
+}
+
+/// Run command through PowerShell without modifying encoding.
+/// Output bytes are decoded by `decode_output()` (UTF-8 first, GBK fallback).
+fn run_powershell(command: &str) -> std::io::Result<std::process::Output> {
+    Command::new("powershell")
+        .args(["-NoProfile", "-Command", command])
+        .output()
+}
+
+/// Run command through cmd.exe without modifying codepage.
+/// Output bytes are decoded by `decode_output()` (UTF-8 first, GBK fallback).
+fn run_cmd(command: &str) -> std::io::Result<std::process::Output> {
+    Command::new("cmd")
+        .args(["/C", command])
+        .output()
+}
+
+/// Run command through sh (for Git Bash / MSYS2 on Windows).
+fn run_unix_like(command: &str) -> std::io::Result<std::process::Output> {
+    Command::new("sh").args(["-c", command]).output()
+}
+
+/// Check if the parent process is PowerShell (fallback detection).
+fn is_powershell_parent() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        // Use the same parent-process detection as context.rs
+        crate::context::detect_windows_parent_shell()
+            .map(|s| s == "PowerShell")
+            .unwrap_or(false)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        false
+    }
 }
 
 /// Decode command output bytes to String.

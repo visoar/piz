@@ -88,7 +88,8 @@ impl LlmBackend for OpenAiBackend {
                 {"role": "user", "content": user}
             ],
             "temperature": super::DEFAULT_TEMPERATURE,
-            "max_tokens": super::DEFAULT_MAX_TOKENS
+            "max_tokens": super::DEFAULT_MAX_TOKENS,
+            "response_format": {"type": "json_object"}
         });
         self.send_request(body).await
     }
@@ -102,7 +103,8 @@ impl LlmBackend for OpenAiBackend {
             "model": self.config.model,
             "messages": msgs,
             "temperature": super::DEFAULT_TEMPERATURE,
-            "max_tokens": super::DEFAULT_MAX_TOKENS
+            "max_tokens": super::DEFAULT_MAX_TOKENS,
+            "response_format": {"type": "json_object"}
         });
         self.send_request(body).await
     }

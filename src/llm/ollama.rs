@@ -81,6 +81,7 @@ impl LlmBackend for OllamaBackend {
                 {"role": "user", "content": user}
             ],
             "stream": false,
+            "format": "json",
             "options": {
                 "temperature": super::DEFAULT_TEMPERATURE,
                 "num_predict": super::DEFAULT_MAX_TOKENS
@@ -98,6 +99,7 @@ impl LlmBackend for OllamaBackend {
             "model": self.config.model,
             "messages": msgs,
             "stream": false,
+            "format": "json",
             "options": {
                 "temperature": super::DEFAULT_TEMPERATURE,
                 "num_predict": super::DEFAULT_MAX_TOKENS

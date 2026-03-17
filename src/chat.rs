@@ -180,7 +180,7 @@ pub async fn run_chat(
         save_chat_history(&history);
 
         // Handle command
-        handle_command_in_chat(&command, final_danger, auto_confirm, tr);
+        handle_command_in_chat(&command, final_danger, auto_confirm, tr, &ctx.shell);
     }
 
     println!();

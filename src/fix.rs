@@ -61,13 +61,15 @@ pub async fn fix_last_command(
     let choice = executor::prompt_user(&fixed_cmd, final_danger, false, tr)?;
     match choice {
         UserChoice::Execute => {
-            let (code, _out, stderr_out) = executor::execute_command(&fixed_cmd, tr)?;
+            let (code, _out, stderr_out) =
+                executor::execute_command_with_shell(&fixed_cmd, &ctx.shell, tr)?;
             if code != 0 {
                 try_auto_fix(&fixed_cmd, code, &stderr_out, tr, backend, ctx, lang).await?;
             }
         }
         UserChoice::Edit(edited) => {
-            let (code, _out, stderr_out) = executor::execute_command(&edited, tr)?;
+            let (code, _out, stderr_out) =
+                executor::execute_command_with_shell(&edited, &ctx.shell, tr)?;
             if code != 0 {
                 try_auto_fix(&edited, code, &stderr_out, tr, backend, ctx, lang).await?;
             }
@@ -134,7 +136,8 @@ pub async fn try_auto_fix(
         let choice = executor::prompt_user(&fixed_cmd, final_danger, false, tr)?;
         match choice {
             UserChoice::Execute => {
-                let (code, _out, err) = executor::execute_command(&fixed_cmd, tr)?;
+                let (code, _out, err) =
+                    executor::execute_command_with_shell(&fixed_cmd, &ctx.shell, tr)?;
                 if code == 0 {
                     return Ok(());
                 }
@@ -157,7 +160,8 @@ pub async fn try_auto_fix(
                     ui::print_error(&format!("{} {}", tr.auto_fix_failed, reason.message(tr)));
                     return Ok(());
                 }
-                let (code, _out, err) = executor::execute_command(&edited, tr)?;
+                let (code, _out, err) =
+                    executor::execute_command_with_shell(&edited, &ctx.shell, tr)?;
                 if code == 0 {
                     return Ok(());
                 }
@@ -189,17 +193,55 @@ pub async fn try_auto_fix(
 }
 
 pub fn parse_fix_response(response: &str) -> Result<(String, String, DangerLevel)> {
-    if let Ok(v) = serde_json::from_str::<serde_json::Value>(response) {
+    let trimmed = response.trim();
+
+    // Level 1: Direct JSON parse
+    if let Ok(v) = serde_json::from_str::<serde_json::Value>(trimmed) {
         return extract_fix_json(&v);
     }
 
-    if let Some(json_str) = crate::extract_json_block(response) {
+    // Level 2: Find JSON block in text
+    if let Some(json_str) = crate::extract_json_block(trimmed) {
         if let Ok(v) = serde_json::from_str::<serde_json::Value>(json_str) {
             return extract_fix_json(&v);
         }
     }
 
+    // Level 3: Structural regex extraction for broken JSON (e.g. unescaped Windows paths)
+    if let Some(result) = extract_fix_by_structure(trimmed) {
+        return Ok(result);
+    }
+
     anyhow::bail!("Could not parse fix response from LLM:\n{}", response)
+}
+
+/// Extract fix fields from malformed JSON using structural regex patterns.
+/// Handles common case of unescaped backslashes in Windows paths.
+fn extract_fix_by_structure(text: &str) -> Option<(String, String, DangerLevel)> {
+    // Extract diagnosis
+    let re_diag = regex::Regex::new(r#""diagnosis"\s*:\s*"(.*?)"\s*[,}]"#).ok()?;
+    let diagnosis = re_diag
+        .captures(text)
+        .and_then(|c| c.get(1))
+        .map(|m| m.as_str().to_string())
+        .unwrap_or_else(|| "Unknown issue".to_string());
+
+    // Extract command — use "danger" field as right boundary to handle unescaped backslashes
+    let re_cmd = regex::Regex::new(
+        r#""command"\s*:\s*"(.*?)"\s*[,}]\s*"danger"\s*:\s*"(safe|warning|dangerous)""#,
+    )
+    .ok()?;
+
+    if let Some(caps) = re_cmd.captures(text) {
+        let cmd = caps.get(1)?.as_str().to_string();
+        let danger_str = caps.get(2)?.as_str();
+        let danger = DangerLevel::from_str_level(danger_str);
+        if !cmd.is_empty() {
+            return Some((diagnosis, cmd, danger));
+        }
+    }
+
+    None
 }
 
 fn extract_fix_json(v: &serde_json::Value) -> Result<(String, String, DangerLevel)> {
@@ -273,5 +315,24 @@ mod tests {
             r#"{"diagnosis": "need root", "command": "rm -rf /tmp/*", "danger": "dangerous"}"#;
         let (_, _, danger) = parse_fix_response(input).unwrap();
         assert_eq!(danger, DangerLevel::Dangerous);
+    }
+
+    // ── Broken JSON (Windows paths) ──
+
+    #[test]
+    fn parse_fix_broken_json_windows_path() {
+        let input = r#"{"diagnosis": "路径错误", "command": "cd /d D:\", "danger": "safe"}"#;
+        let (diag, cmd, danger) = parse_fix_response(input).unwrap();
+        assert_eq!(diag, "路径错误");
+        assert_eq!(cmd, r#"cd /d D:\"#);
+        assert_eq!(danger, DangerLevel::Safe);
+    }
+
+    #[test]
+    fn parse_fix_broken_json_windows_path_with_subdir() {
+        let input =
+            r#"{"diagnosis": "wrong dir", "command": "dir C:\Users\test", "danger": "safe"}"#;
+        let (_, cmd, _) = parse_fix_response(input).unwrap();
+        assert!(cmd.contains(r"C:\Users\test"));
     }
 }

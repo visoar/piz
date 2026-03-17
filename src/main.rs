@@ -10,6 +10,7 @@ mod fix;
 mod history;
 mod i18n;
 mod llm;
+mod shell_init;
 mod ui;
 mod update;
 
@@ -39,6 +40,13 @@ async fn run() -> Result<()> {
     // Handle completions before loading config (no config needed)
     if let Some(Commands::Completions { shell }) = &cli.command {
         Cli::generate_completions(*shell);
+        return Ok(());
+    }
+
+    // Handle init before loading config (no config needed)
+    if let Some(Commands::Init { shell }) = &cli.command {
+        let code = shell_init::generate_init(shell)?;
+        print!("{}", code);
         return Ok(());
     }
 
@@ -149,6 +157,7 @@ async fn run() -> Result<()> {
             }
             Commands::Config { .. } => unreachable!("Config handled earlier"),
             Commands::Completions { .. } => unreachable!("Completions handled earlier"),
+            Commands::Init { .. } => unreachable!("Init handled earlier"),
             Commands::Update => unreachable!("Update handled earlier"),
         }
     }
@@ -212,6 +221,12 @@ async fn run() -> Result<()> {
             let regex_danger = danger::detect_danger_regex(&cached_cmd);
             let llm_danger = DangerLevel::from_str_level(&cached_danger);
             let final_danger = regex_danger.max(llm_danger);
+
+            // Eval mode for cached commands
+            if cli.eval {
+                return handle_eval_mode(&cached_cmd, final_danger, cfg.auto_confirm_safe, tr)
+                    .await;
+            }
 
             return handle_command_with_autofix(
                 &cached_cmd,
@@ -301,11 +316,12 @@ async fn run() -> Result<()> {
     let regex_danger = danger::detect_danger_regex(&command);
     let final_danger = regex_danger.max(llm_danger);
 
-    // Cache the result
-    if let Some(ref c) = cache {
-        let _ = c.put(&query, &ctx.os, &ctx.shell, &command, final_danger.as_str());
+    // Eval mode: show UI, get confirmation, write command to file for shell wrapper
+    if cli.eval {
+        return handle_eval_mode(&command, final_danger, cfg.auto_confirm_safe, tr).await;
     }
 
+    // Execute the command (cache AFTER success, not before)
     let result = handle_command_with_autofix(
         &command,
         final_danger,
@@ -317,12 +333,15 @@ async fn run() -> Result<()> {
     )
     .await;
 
-    // Record execution in history
+    // Record execution in history and cache only successful commands
     if let Some(ref c) = cache {
-        // Load last exec to get exit code
         if let Ok(last) = executor::load_last_exec() {
             let _ =
                 c.record_execution(&query, &last.command, last.exit_code, final_danger.as_str());
+            // Only cache commands that were successfully executed
+            if last.exit_code == 0 {
+                let _ = c.put(&query, &ctx.os, &ctx.shell, &command, final_danger.as_str());
+            }
         }
     }
 
@@ -332,6 +351,42 @@ async fn run() -> Result<()> {
     }
 
     result
+}
+
+/// Eval mode: show command and get user confirmation, then write to file for shell wrapper.
+/// The shell wrapper function reads the file and evals the command in the current shell,
+/// so cd, export, source, etc. all work correctly.
+async fn handle_eval_mode(
+    command: &str,
+    danger: DangerLevel,
+    auto_confirm: bool,
+    tr: &i18n::T,
+) -> Result<()> {
+    let choice = executor::prompt_user(command, danger, auto_confirm, tr)?;
+    let final_cmd = match choice {
+        UserChoice::Execute => command.to_string(),
+        UserChoice::Edit(edited) => {
+            if let Some(reason) = danger::detect_injection(&edited) {
+                ui::print_danger(tr);
+                ui::print_info(reason.message(tr));
+                anyhow::bail!("Edited command blocked: {}", reason.message(tr));
+            }
+            edited
+        }
+        UserChoice::Cancel => {
+            ui::print_info(tr.cancelled);
+            // Remove eval file to signal cancellation
+            let _ = std::fs::remove_file(config::piz_dir()?.join("eval_command"));
+            std::process::exit(1);
+        }
+    };
+
+    // Write command to file for shell wrapper to read and eval
+    let dir = config::piz_dir()?;
+    std::fs::create_dir_all(&dir)?;
+    std::fs::write(dir.join("eval_command"), &final_cmd)?;
+
+    Ok(())
 }
 
 async fn handle_command_with_autofix(
@@ -345,7 +400,9 @@ async fn handle_command_with_autofix(
 ) -> Result<()> {
     let choice = executor::prompt_user(command, danger, auto_confirm, tr)?;
     let exec_result = match choice {
-        UserChoice::Execute => Some(executor::execute_command(command, tr)?),
+        UserChoice::Execute => {
+            Some(executor::execute_command_with_shell(command, &ctx.shell, tr)?)
+        }
         UserChoice::Edit(ref edited) => {
             // Re-check edited command for injection and danger
             if let Some(reason) = danger::detect_injection(edited) {
@@ -353,7 +410,7 @@ async fn handle_command_with_autofix(
                 ui::print_info(reason.message(tr));
                 anyhow::bail!("Edited command blocked: {}", reason.message(tr));
             }
-            Some(executor::execute_command(edited, tr)?)
+            Some(executor::execute_command_with_shell(edited, &ctx.shell, tr)?)
         }
         UserChoice::Cancel => {
             ui::print_info(tr.cancelled);
@@ -498,6 +555,7 @@ pub fn handle_command_in_chat(
     danger: DangerLevel,
     auto_confirm: bool,
     tr: &i18n::T,
+    shell: &str,
 ) {
     let choice = match executor::prompt_user(command, danger, auto_confirm, tr) {
         Ok(c) => c,
@@ -508,7 +566,7 @@ pub fn handle_command_in_chat(
     };
     match choice {
         UserChoice::Execute => {
-            if let Err(e) = executor::execute_command(command, tr) {
+            if let Err(e) = executor::execute_command_with_shell(command, shell, tr) {
                 ui::print_error(&format!("{:#}", e));
             }
         }
@@ -519,7 +577,7 @@ pub fn handle_command_in_chat(
                 ui::print_info(reason.message(tr));
                 return;
             }
-            if let Err(e) = executor::execute_command(&edited, tr) {
+            if let Err(e) = executor::execute_command_with_shell(&edited, shell, tr) {
                 ui::print_error(&format!("{:#}", e));
             }
         }
@@ -545,11 +603,14 @@ fn check_refusal(v: &serde_json::Value) -> Option<String> {
     None
 }
 
-/// Parse LLM response with 4-level fallback:
-/// 1. Direct JSON
+/// Parse LLM response with multi-level fallback:
+/// 1. Direct JSON parse
 /// 2. Extract JSON block from text
-/// 3. Extract backtick-wrapped command
-/// 4. Raw text as command
+/// 3. Structural regex extraction (handles broken JSON escaping, e.g. Windows paths)
+/// 4. Extract backtick-wrapped command (last resort)
+///
+/// NOTE: We intentionally do NOT fall back to "raw text as command" —
+/// if all parsing levels fail, it's an error, not a command to execute.
 pub fn parse_llm_response(response: &str) -> Result<(String, DangerLevel)> {
     let trimmed = response.trim();
 
@@ -583,26 +644,79 @@ pub fn parse_llm_response(response: &str) -> Result<(String, DangerLevel)> {
         }
     }
 
-    // Level 3: Extract backtick-wrapped command (handle triple backticks)
+    // Level 3: Structural regex extraction — handles broken JSON (e.g. unescaped backslashes)
+    // Uses the known field structure to locate the command value without relying on JSON escaping.
+    if let Some(result) = extract_command_by_structure(trimmed) {
+        return Ok(result);
+    }
+
+    // Level 4: Extract backtick-wrapped command (last resort for non-JSON responses)
     if let Some(cmd) = extract_backtick_command(trimmed) {
         if !cmd.is_empty() {
             return Ok((cmd.to_string(), DangerLevel::Safe));
         }
     }
 
-    // Level 4: Use raw text (first non-empty line)
-    let cmd = trimmed
-        .lines()
-        .find(|l| !l.trim().is_empty())
-        .unwrap_or(trimmed)
-        .trim()
-        .to_string();
+    // No more "raw text as command" — refuse to guess
+    anyhow::bail!(
+        "Failed to parse LLM response as a command. Raw response:\n{}",
+        trimmed
+    );
+}
 
-    if cmd.is_empty() {
-        anyhow::bail!("LLM returned empty response");
+/// Extract command and danger from a malformed JSON response using structural patterns.
+/// This handles the common case where LLM produces invalid JSON due to unescaped
+/// backslashes in Windows paths (e.g. `"command": "cd D:\"` instead of `"cd D:\\"`).
+fn extract_command_by_structure(text: &str) -> Option<(String, DangerLevel)> {
+    // Check for refusal first — if refuse:true with empty command, return None
+    // so the caller reports it as a parse error (which surfaces the refusal message).
+    if text.contains("\"refuse\"") && text.contains("true") {
+        if let Some(re_cmd) = regex::Regex::new(r#""command"\s*:\s*"(.*?)""#).ok() {
+            if let Some(caps) = re_cmd.captures(text) {
+                if caps
+                    .get(1)
+                    .map(|m| m.as_str().trim().is_empty())
+                    .unwrap_or(true)
+                {
+                    return None;
+                }
+            }
+        }
     }
 
-    Ok((cmd, DangerLevel::Safe))
+    // Strategy: find "command": "..." followed by "danger": "..." using the structural
+    // delimiter `, "danger"` or `,"danger"` to locate where the command value ends.
+    // This avoids the ambiguity of `\"` being a JSON escape vs a Windows path separator.
+    let re = regex::Regex::new(
+        r#""command"\s*:\s*"(.*?)"\s*[,}]\s*"danger"\s*:\s*"(safe|warning|dangerous)""#,
+    )
+    .ok()?;
+
+    if let Some(caps) = re.captures(text) {
+        let cmd = caps.get(1)?.as_str().to_string();
+        let danger_str = caps.get(2)?.as_str();
+        let danger = DangerLevel::from_str_level(danger_str);
+        if !cmd.is_empty() {
+            return Some((cmd, danger));
+        }
+    }
+
+    // Also try reversed field order: "danger" before "command"
+    let re_rev = regex::Regex::new(
+        r#""danger"\s*:\s*"(safe|warning|dangerous)"\s*[,}]\s*"command"\s*:\s*"(.*?)""#,
+    )
+    .ok()?;
+
+    if let Some(caps) = re_rev.captures(text) {
+        let danger_str = caps.get(1)?.as_str();
+        let cmd = caps.get(2)?.as_str().to_string();
+        let danger = DangerLevel::from_str_level(danger_str);
+        if !cmd.is_empty() {
+            return Some((cmd, danger));
+        }
+    }
+
+    None
 }
 
 /// Extract a JSON object from text by matching braces
@@ -715,7 +829,34 @@ mod tests {
         assert_eq!(cmd, "top -n 1");
     }
 
-    // ── Level 3: Backtick-wrapped command ──
+    // ── Level 3: Structural regex extraction (broken JSON) ──
+
+    #[test]
+    fn parse_broken_json_windows_path_backslash() {
+        // LLM returns invalid JSON: D:\ causes the \" to be treated as escaped quote
+        let input = r#"{"command": "cd /d D:\", "danger": "safe"}"#;
+        let (cmd, danger) = parse_llm_response(input).unwrap();
+        assert_eq!(cmd, r#"cd /d D:\"#);
+        assert_eq!(danger, DangerLevel::Safe);
+    }
+
+    #[test]
+    fn parse_broken_json_windows_path_with_subdir() {
+        let input = r#"{"command": "dir C:\Users\test", "danger": "safe"}"#;
+        let (cmd, danger) = parse_llm_response(input).unwrap();
+        assert!(cmd.contains(r"C:\Users\test"));
+        assert_eq!(danger, DangerLevel::Safe);
+    }
+
+    #[test]
+    fn parse_broken_json_with_warning_danger() {
+        let input = r#"{"command": "del C:\temp\*", "danger": "warning"}"#;
+        let (cmd, danger) = parse_llm_response(input).unwrap();
+        assert!(cmd.contains(r"C:\temp\*"));
+        assert_eq!(danger, DangerLevel::Warning);
+    }
+
+    // ── Level 4: Backtick-wrapped command ──
 
     #[test]
     fn parse_backtick_command() {
@@ -725,31 +866,7 @@ mod tests {
         assert_eq!(danger, DangerLevel::Safe);
     }
 
-    // ── Level 4: Raw text ──
-
-    #[test]
-    fn parse_raw_text() {
-        let input = "df -h";
-        let (cmd, danger) = parse_llm_response(input).unwrap();
-        assert_eq!(cmd, "df -h");
-        assert_eq!(danger, DangerLevel::Safe);
-    }
-
-    #[test]
-    fn parse_raw_text_multiline_takes_first() {
-        let input = "ls -la\nThis lists files";
-        let (cmd, _) = parse_llm_response(input).unwrap();
-        assert_eq!(cmd, "ls -la");
-    }
-
-    #[test]
-    fn parse_raw_text_with_whitespace() {
-        let input = "  \n  df -h  \n  ";
-        let (cmd, _) = parse_llm_response(input).unwrap();
-        assert_eq!(cmd, "df -h");
-    }
-
-    // ── Error case ──
+    // ── Error cases ──
 
     #[test]
     fn parse_empty_response_errors() {
@@ -763,14 +880,19 @@ mod tests {
         assert!(result.is_err());
     }
 
-    // ── Edge cases ──
+    #[test]
+    fn parse_raw_text_no_longer_accepted() {
+        // Raw text should NOT be treated as a command — it's an error
+        let result = parse_llm_response("df -h");
+        assert!(result.is_err());
+    }
 
     #[test]
-    fn parse_json_no_command_field_falls_through() {
+    fn parse_json_no_command_field_errors() {
         let input = r#"{"result": "ok"}"#;
-        // No "command" field, should fall through to level 4 (raw text)
-        let (cmd, _) = parse_llm_response(input).unwrap();
-        assert_eq!(cmd, r#"{"result": "ok"}"#);
+        // No "command" field, should be an error (no longer falls through to raw text)
+        let result = parse_llm_response(input);
+        assert!(result.is_err());
     }
 
     #[test]

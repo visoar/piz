@@ -108,6 +108,8 @@ pub fn build_translate_prompt_with_context(
 Return ONLY a raw JSON object (no markdown, no ```json wrapper, no explanation):
 {{"command": "<shell command>", "danger": "<safe|warning|dangerous>"}}
 
+CRITICAL: The output must be valid JSON. Backslashes in the command MUST be escaped as \\\\ (double backslash). For example, Windows path D:\\ must be written as "D:\\\\" in JSON.
+
 ## Danger level criteria
 - "safe": read-only or informational commands that do not change state (ls, cat, df, ps, git status, docker ps, echo, pwd, whoami)
 - "warning": commands that modify files, install packages, change permissions, or alter system state but are reversible or scoped (rm file, chmod, pip install, systemctl restart, git push, kill process, truncate)
@@ -241,6 +243,8 @@ pub fn build_chat_system_prompt(ctx: &SystemContext, lang: &str) -> String {
 For each request, return ONLY a raw JSON object:
 {{"command": "<shell command>", "danger": "<safe|warning|dangerous>"}}
 
+CRITICAL: The output must be valid JSON. Backslashes MUST be escaped as \\\\ (double backslash).
+
 ## Context awareness
 - You have access to the full conversation history.
 - When the user says things like "sort that", "only the first 10", "change to /tmp", understand they are refining the previous command.
@@ -370,6 +374,8 @@ pub fn build_fix_prompt(
 Return ONLY a raw JSON object (no markdown, no ```json wrapper, no explanation):
 {{"diagnosis": "<brief root cause in user's language>", "command": "<fixed command>", "danger": "<safe|warning|dangerous>"}}
 
+CRITICAL: The output must be valid JSON. Backslashes in the command MUST be escaped as \\\\ (double backslash). For example, Windows path D:\\ must be written as "D:\\\\" in JSON.
+
 ## Common failure patterns to check
 - Permission denied → need sudo/admin, or fix file permissions
 - Command not found → typo, package not installed, not in PATH
@@ -472,6 +478,13 @@ mod tests {
         let (system, _) = build_translate_prompt(&test_ctx(), "test", "en");
         assert!(system.contains("Examples"));
         assert!(system.contains("ls -la"));
+    }
+
+    #[test]
+    fn translate_prompt_has_json_escaping_instruction() {
+        let (system, _) = build_translate_prompt(&test_ctx(), "test", "en");
+        assert!(system.contains("valid JSON"));
+        assert!(system.contains("Backslash"));
     }
 
     #[test]

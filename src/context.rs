@@ -137,7 +137,7 @@ fn detect_shell() -> String {
 /// Detect the parent shell on Windows by walking up the process tree.
 /// Returns Some("PowerShell"), Some("cmd"), Some("bash"), etc.
 #[cfg(target_os = "windows")]
-fn detect_windows_parent_shell() -> Option<String> {
+pub fn detect_windows_parent_shell() -> Option<String> {
     use std::process::Command;
 
     // Use WMIC to get the parent process ID, then resolve its name.
@@ -198,6 +198,6 @@ fn detect_windows_parent_shell() -> Option<String> {
 }
 
 #[cfg(not(target_os = "windows"))]
-fn detect_windows_parent_shell() -> Option<String> {
+pub fn detect_windows_parent_shell() -> Option<String> {
     None
 }

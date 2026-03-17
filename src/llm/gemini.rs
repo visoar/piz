@@ -108,7 +108,8 @@ impl LlmBackend for GeminiBackend {
             ],
             "generationConfig": {
                 "temperature": super::DEFAULT_TEMPERATURE,
-                "maxOutputTokens": super::DEFAULT_MAX_TOKENS
+                "maxOutputTokens": super::DEFAULT_MAX_TOKENS,
+                "responseMimeType": "application/json"
             }
         });
         self.send_request(body).await
@@ -136,7 +137,8 @@ impl LlmBackend for GeminiBackend {
             "contents": contents,
             "generationConfig": {
                 "temperature": super::DEFAULT_TEMPERATURE,
-                "maxOutputTokens": super::DEFAULT_MAX_TOKENS
+                "maxOutputTokens": super::DEFAULT_MAX_TOKENS,
+                "responseMimeType": "application/json"
             }
         });
         self.send_request(body).await
