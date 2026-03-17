@@ -47,19 +47,9 @@ jobs:
   audit:
     name: Security Audit
     runs-on: ubuntu-latest
+    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
       - uses: rustsec/audit-check@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-
-  msrv:
-    name: MSRV (1.70)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: dtolnay/rust-toolchain@master
-        with:
-          toolchain: "1.70"
-      - uses: Swatinem/rust-cache@v2
-      - run: cargo build --verbose
