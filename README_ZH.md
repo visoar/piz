@@ -472,3 +472,7 @@ cargo install --path .     # 安装到 PATH
 ## 许可证
 
 本项目基于 MIT 许可证开源，详见 [LICENSE](LICENSE)。
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=AriesOxO/piz&type=Date)](https://star-history.com/#AriesOxO/piz&Date)
