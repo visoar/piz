@@ -178,9 +178,7 @@ fn run_powershell(command: &str) -> std::io::Result<std::process::Output> {
 /// Run command through cmd.exe without modifying codepage.
 /// Output bytes are decoded by `decode_output()` (UTF-8 first, GBK fallback).
 fn run_cmd(command: &str) -> std::io::Result<std::process::Output> {
-    Command::new("cmd")
-        .args(["/C", command])
-        .output()
+    Command::new("cmd").args(["/C", command]).output()
 }
 
 /// Run command through sh (for Git Bash / MSYS2 on Windows).

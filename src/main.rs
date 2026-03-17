@@ -400,9 +400,9 @@ async fn handle_command_with_autofix(
 ) -> Result<()> {
     let choice = executor::prompt_user(command, danger, auto_confirm, tr)?;
     let exec_result = match choice {
-        UserChoice::Execute => {
-            Some(executor::execute_command_with_shell(command, &ctx.shell, tr)?)
-        }
+        UserChoice::Execute => Some(executor::execute_command_with_shell(
+            command, &ctx.shell, tr,
+        )?),
         UserChoice::Edit(ref edited) => {
             // Re-check edited command for injection and danger
             if let Some(reason) = danger::detect_injection(edited) {
@@ -410,7 +410,9 @@ async fn handle_command_with_autofix(
                 ui::print_info(reason.message(tr));
                 anyhow::bail!("Edited command blocked: {}", reason.message(tr));
             }
-            Some(executor::execute_command_with_shell(edited, &ctx.shell, tr)?)
+            Some(executor::execute_command_with_shell(
+                edited, &ctx.shell, tr,
+            )?)
         }
         UserChoice::Cancel => {
             ui::print_info(tr.cancelled);
@@ -671,7 +673,7 @@ fn extract_command_by_structure(text: &str) -> Option<(String, DangerLevel)> {
     // Check for refusal first — if refuse:true with empty command, return None
     // so the caller reports it as a parse error (which surfaces the refusal message).
     if text.contains("\"refuse\"") && text.contains("true") {
-        if let Some(re_cmd) = regex::Regex::new(r#""command"\s*:\s*"(.*?)""#).ok() {
+        if let Ok(re_cmd) = regex::Regex::new(r#""command"\s*:\s*"(.*?)""#) {
             if let Some(caps) = re_cmd.captures(text) {
                 if caps
                     .get(1)
